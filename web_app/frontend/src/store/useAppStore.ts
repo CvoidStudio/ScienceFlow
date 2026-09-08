@@ -1,0 +1,486 @@
+import { create } from 'zustand';
+import type {
+  ScienceFlowState,
+  View,
+  FrontTab,
+  L1Tab,
+  Theme,
+  PanelLayout,
+  FontSize,
+  L1Scope,
+  ChatRunState,
+  ChatRouteMode,
+  ChatMessage,
+  ChatSession,
+  ChatToolEvent,
+  BackendHealth,
+  RuntimeSettings,
+  AgentMapModel,
+  WorkspaceFile,
+  DecisionCard,
+} from '../types';
+import type { Lang } from '../i18n/translations';
+import * as api from '../api/client';
+
+interface AppState {
+  // Theme & layout
+  theme: Theme;
+  panelLayout: PanelLayout;
+  fontSize: FontSize;
+  language: Lang;
+  setTheme: (theme: Theme) => void;
+  setPanelLayout: (layout: PanelLayout) => void;
+  setFontSize: (size: FontSize) => void;
+  setLanguage: (lang: Lang) => void;
+
+  // View
+  currentView: View;
+  frontTab: FrontTab;
+  l1Tab: L1Tab;
+  setView: (view: View) => void;
+  setFrontTab: (tab: FrontTab) => void;
+  setL1Tab: (tab: L1Tab) => void;
+
+  // Scope
+  l1Scope: L1Scope;
+  selectedRunIndex: number;
+  selectedNodeIndex: number;
+  setL1Scope: (scope: L1Scope) => void;
+  selectRun: (index: number) => void;
+  selectNode: (index: number) => void;
+
+  // State
+  currentState: ScienceFlowState | null;
+  stateSignature: string;
+  moduleEtags: Map<string, string>;
+  transportMetrics: Record<string, unknown> | null;
+  stateStablePolls: number;
+
+  // Actions
+  refreshState: (options?: { force?: boolean; compact?: boolean }) => Promise<void>;
+  applyStatePatch: (patch: { modules?: Record<string, unknown>; signature?: string; module_etags?: Record<string, string> }) => void;
+
+  // Chat
+  chatSessionId: string;
+  chatSessionTaskRoot: string;
+  chatMessages: ChatMessage[];
+  chatBusy: boolean;
+  chatQueueDepth: number;
+  chatSendInFlight: boolean;
+  chatWarmup: boolean;
+  chatRunState: ChatRunState;
+  chatRouteMode: ChatRouteMode;
+  chatProgressLabel: string;
+  chatRunStartedAt: number;
+  toolEvents: ChatToolEvent[];
+  sessions: ChatSession[];
+  sessionsPanelOpen: boolean;
+  eventSource: EventSource | null;
+  lastSeq: number;
+  streamingAssistantMessages: Map<string, string>;
+  pendingAssistantMessages: Map<string, string>;
+  agentMapSelectionLocked: boolean;
+  agentMapReportOpen: boolean;
+  agentPositionId: string;
+
+  activeMessageId: string;
+  clearTimeline: () => void;
+  setActiveMessageId: (id: string) => void;
+  applyStateUpdatePatch: (data: Record<string, unknown>) => void;
+  addWorkspaceFile: (file: WorkspaceFile) => void;
+
+  setChatSessionId: (id: string) => void;
+  setChatMessages: (messages: ChatMessage[]) => void;
+  addChatMessage: (message: ChatMessage) => void;
+  updateAssistantMessage: (messageId: string, content: string) => void;
+  setStreamingAssistantContent: (msgId: string, content: string) => void;
+  setChatBusy: (busy: boolean) => void;
+  setChatRunState: (state: ChatRunState) => void;
+  setChatRouteMode: (mode: ChatRouteMode) => void;
+  setSessions: (sessions: ChatSession[]) => void;
+  setSessionsPanelOpen: (open: boolean) => void;
+  setEventSource: (es: EventSource | null) => void;
+
+  // Settings & health
+  backendHealth: BackendHealth | null;
+  runtimeSettings: RuntimeSettings | null;
+  settingsPanelOpen: boolean;
+  statePanelOpen: boolean;
+
+  fetchHealth: () => Promise<void>;
+  fetchSettings: () => Promise<void>;
+  setSettingsPanelOpen: (open: boolean) => void;
+  setStatePanelOpen: (open: boolean) => void;
+
+  // Batch panel
+  batchPanelCollapsed: boolean;
+  setBatchPanelCollapsed: (collapsed: boolean) => void;
+
+  // Workspace
+  workspaceFiles: WorkspaceFile[];
+  workspaceFilesSignature: string;
+  selectedWorkspacePath: string;
+  selectedLogPath: string;
+  workspaceTreeCollapsed: boolean;
+  logFiles: { name: string; path: string; size: number }[];
+  logEntries: string[];
+
+  fetchWorkspaceFiles: () => Promise<void>;
+  setWorkspaceFiles: (files: WorkspaceFile[], signature: string) => void;
+  fetchLogFiles: () => Promise<void>;
+  setSelectedWorkspacePath: (path: string) => void;
+  setSelectedLogPath: (path: string) => void;
+  setWorkspaceTreeCollapsed: (collapsed: boolean) => void;
+  appendLogEntry: (line: string) => void;
+  clearLogEntries: () => void;
+
+  // Reports (recursively scan task_root for .md files)
+  reportList: { path: string; filename: string; relative_path: string; title: string; created_at: string }[];
+  selectedReportPath: string;
+  reportContent: string;
+  fetchReports: () => Promise<void>;
+  fetchReportContent: (path: string) => Promise<void>;
+  clearReportState: () => void;
+
+  // Agent map
+  agentMapModel: AgentMapModel | null;
+  selectedAgentWorkerId: string;
+  selectAgentMapWorker: (workerId: string) => void;
+  setAgentMapReportOpen: (open: boolean) => void;
+  setAgentPositionId: (id: string) => void;
+  randomizeAgentPosition: () => void;
+
+  // Caches
+  artifactTextCache: Map<string, string>;
+  reportHtmlCache: Map<string, string>;
+  workspaceFileTextCache: Map<string, { content: string; contentType: string; encoding: string }>;
+  logFileTextCache: Map<string, string>;
+  clearCaches: () => void;
+
+  // Derived
+  activeTaskRoot: () => string;
+  currentL1Node: () => import('../types').NodeInfo | null;
+}
+
+export const useAppStore = create<AppState>((set, get) => ({
+  // Theme & layout
+  theme: (localStorage.getItem('scienceflow.theme') as Theme) || 'scienceflow-dark',
+  panelLayout: (localStorage.getItem('scienceflow.panelLayout') as PanelLayout) || 'intelligence-left',
+  fontSize: (localStorage.getItem('scienceflow.fontSize') as FontSize) || 'default',
+  language: (localStorage.getItem('scienceflow.language') as Lang) || 'en-US',
+
+  setTheme: (theme) => {
+    localStorage.setItem('scienceflow.theme', theme);
+    document.documentElement.dataset.theme = theme;
+    set({ theme });
+  },
+  setPanelLayout: (layout) => {
+    localStorage.setItem('scienceflow.panelLayout', layout);
+    document.documentElement.dataset.panelLayout = layout;
+    set({ panelLayout: layout });
+  },
+  setFontSize: (size) => {
+    localStorage.setItem('scienceflow.fontSize', size);
+    document.documentElement.dataset.fontSize = size;
+    set({ fontSize: size });
+  },
+  setLanguage: (lang) => {
+    localStorage.setItem('scienceflow.language', lang);
+    set({ language: lang });
+  },
+
+  // View
+  currentView: 'l0',
+  frontTab: 'agent-map',
+  l1Tab: 'board',
+  setView: (view) => set({ currentView: view }),
+  setFrontTab: (tab) => set({ frontTab: tab }),
+  setL1Tab: (tab) => set({ l1Tab: tab }),
+
+  // Scope
+  l1Scope: 'task',
+  selectedRunIndex: 0,
+  selectedNodeIndex: 0,
+  setL1Scope: (scope) => set({ l1Scope: scope }),
+  selectRun: (index) => set({ selectedRunIndex: Math.max(0, index) }),
+  selectNode: (index) => set({ selectedNodeIndex: Math.max(0, index) }),
+
+  // State
+  currentState: null,
+  stateSignature: '',
+  moduleEtags: new Map(),
+  transportMetrics: null,
+  stateStablePolls: 0,
+
+  refreshState: async (options = {}) => {
+    const { force, compact } = options;
+    const taskRoot = get().activeTaskRoot();
+    const usePatch = Boolean(get().currentState) && !force;
+
+    if (usePatch) {
+      const stateSig = get().stateSignature;
+      const etags: Record<string, string> = {};
+      get().moduleEtags.forEach((v, k) => { etags[k] = v; });
+      try {
+        const payload = await api.fetchStatePatch({ stateSig, taskRoot: taskRoot || undefined });
+        if ('state_patch' in payload && payload.state_patch) {
+          get().applyStatePatch(payload.state_patch);
+          set({ stateStablePolls: get().stateStablePolls + (payload.state_patch.not_modified ? 1 : 0) });
+        }
+      } catch { /* silent */ }
+    } else {
+      try {
+        const payload = await api.fetchState({
+          compact: compact !== false,
+          taskRoot: taskRoot || undefined,
+        });
+        if ('state' in payload && payload.state) {
+          set({ currentState: payload.state, stateStablePolls: 0 });
+          if (payload.state_signature) set({ stateSignature: payload.state_signature });
+          if (payload.module_etags) {
+            const m = new Map<string, string>();
+            Object.entries(payload.module_etags).forEach(([k, v]) => m.set(k, v));
+            set({ moduleEtags: m });
+          }
+        }
+      } catch { /* silent */ }
+    }
+  },
+
+  applyStatePatch: (patch) => {
+    if (!patch.modules || Object.keys(patch.modules).length === 0) return;
+    const state = get().currentState;
+    if (!state) return;
+    const updated = { ...state };
+    for (const [key, value] of Object.entries(patch.modules)) {
+      (updated as Record<string, unknown>)[key] = value;
+    }
+    set({ currentState: updated });
+    if (patch.signature) set({ stateSignature: patch.signature });
+  },
+
+  // Chat
+  chatSessionId: '',
+  chatSessionTaskRoot: '',
+  chatMessages: [],
+  chatBusy: false,
+  chatQueueDepth: 0,
+  chatSendInFlight: false,
+  chatWarmup: false,
+  chatRunState: 'idle',
+  chatRouteMode: 'chat',
+  chatProgressLabel: '',
+  chatRunStartedAt: 0,
+  toolEvents: [],
+  sessions: [],
+  sessionsPanelOpen: false,
+  eventSource: null,
+  lastSeq: 0,
+  streamingAssistantMessages: new Map(),
+  pendingAssistantMessages: new Map(),
+  agentMapSelectionLocked: false,
+  agentMapReportOpen: false,
+  agentPositionId: 'coordinator',
+
+  activeMessageId: '',
+
+  setChatSessionId: (id) => set({ chatSessionId: id, ...(id ? {} : { workspaceFiles: [], workspaceFilesSignature: '', selectedWorkspacePath: '' }) }),
+  setChatMessages: (messages) => set({ chatMessages: messages }),
+  addChatMessage: (message) => set((s) => ({ chatMessages: [...s.chatMessages, message] })),
+  updateAssistantMessage: (messageId, content) => {
+    set((s) => ({
+      chatMessages: s.chatMessages.map((m) =>
+        m.message_id === messageId ? { ...m, content } : m
+      ),
+    }));
+  },
+  setStreamingAssistantContent: (msgId, content) => {
+    set((s) => {
+      const next = new Map(s.streamingAssistantMessages);
+      next.set(msgId, content);
+      return { streamingAssistantMessages: next };
+    });
+  },
+  setChatBusy: (busy) => set({ chatBusy: busy }),
+  setChatRunState: (state) => set({ chatRunState: state }),
+  setChatRouteMode: (mode) => set({ chatRouteMode: mode }),
+  setSessions: (sessions) => set({ sessions }),
+  setSessionsPanelOpen: (open) => set({ sessionsPanelOpen: open }),
+  setEventSource: (es) => set({ eventSource: es }),
+
+  // Settings & health
+  backendHealth: null,
+  runtimeSettings: null,
+  settingsPanelOpen: false,
+  statePanelOpen: false,
+
+  fetchHealth: async () => {
+    try {
+      const health = await api.fetchHealth();
+      set({ backendHealth: health });
+    } catch { /* silent */ }
+  },
+  fetchSettings: async () => {
+    try {
+      const settings = await api.fetchSettings();
+      set({ runtimeSettings: settings });
+    } catch { /* silent */ }
+  },
+  setSettingsPanelOpen: (open) => set({ settingsPanelOpen: open }),
+  setStatePanelOpen: (open) => set({ statePanelOpen: open }),
+
+  // Batch panel
+  batchPanelCollapsed: true,
+  setBatchPanelCollapsed: (collapsed) => set({ batchPanelCollapsed: collapsed }),
+
+  // Workspace
+  workspaceFiles: [],
+  workspaceFilesSignature: '',
+  selectedWorkspacePath: '',
+  selectedLogPath: '',
+  workspaceTreeCollapsed: true,
+  logFiles: [],
+  logEntries: [],
+
+  fetchWorkspaceFiles: async () => {
+    try {
+      const state = get();
+      if (!state.chatSessionId) {
+        set({ workspaceFiles: [], workspaceFilesSignature: '' });
+        return;
+      }
+      const result = await api.fetchWorkspaceFiles(
+        state.activeTaskRoot() || undefined,
+        state.chatSessionId || undefined,
+      );
+      set({ workspaceFiles: result.files || [], workspaceFilesSignature: result.signature || '' });
+    } catch { /* silent */ }
+  },
+  setWorkspaceFiles: (files, signature) => set({ workspaceFiles: files, workspaceFilesSignature: signature }),
+  fetchLogFiles: async () => {
+    try {
+      const result = await api.fetchLogs(get().activeTaskRoot() || undefined);
+      set({ logFiles: result.files || [] });
+    } catch { /* silent */ }
+  },
+  setSelectedWorkspacePath: (path) => set({ selectedWorkspacePath: path }),
+  setSelectedLogPath: (path) => set({ selectedLogPath: path }),
+  setWorkspaceTreeCollapsed: (collapsed) => set({ workspaceTreeCollapsed: collapsed }),
+  appendLogEntry: (line) =>
+    set((s) => {
+      const next = [...s.logEntries, line];
+      return { logEntries: next.length > 2000 ? next.slice(-2000) : next };
+    }),
+  clearLogEntries: () => set({ logEntries: [] }),
+
+  // Reports (recursively scan task_root for .md files)
+  reportList: [] as { path: string; filename: string; relative_path: string; title: string; created_at: string }[],
+  selectedReportPath: '',
+  reportContent: '',
+  fetchReports: async () => {
+    try {
+      const state = get();
+      const result = await api.fetchReports(undefined, state.chatSessionId || undefined);
+      const list = result.reports || [];
+      set({ reportList: list });
+      if (list.length > 0 && !get().selectedReportPath) {
+        const latest = list[0];
+        set({ selectedReportPath: latest.path });
+        const c = await api.fetchReportContent(latest.path, undefined, state.chatSessionId || undefined);
+        set({ reportContent: c.content || '' });
+      }
+    } catch { /* silent */ }
+  },
+  fetchReportContent: async (path) => {
+    try {
+      const state = get();
+      const c = await api.fetchReportContent(path, undefined, state.chatSessionId || undefined);
+      set({ reportContent: c.content || '', selectedReportPath: path });
+    } catch { /* silent */ }
+  },
+  clearReportState: () => set({ reportList: [], selectedReportPath: '', reportContent: '' }),
+
+  // Agent map
+  agentMapModel: null,
+  selectedAgentWorkerId: '',
+  selectAgentMapWorker: (workerId) => set({ selectedAgentWorkerId: workerId }),
+  setAgentMapReportOpen: (open) => set({ agentMapReportOpen: open }),
+  setAgentPositionId: (id) => set({ agentPositionId: id }),
+
+  // Position waypoints for agent map actor movement
+  randomizeAgentPosition: () => {
+    const WAYPOINTS = ['coordinator', 'worker0', 'worker1', 'worker2', 'worker3'];
+    const current = get().agentPositionId;
+    const others = WAYPOINTS.filter((w) => w !== current);
+    const next = others[Math.floor(Math.random() * others.length)] || WAYPOINTS[0];
+    set({ agentPositionId: next });
+  },
+
+  // Simple state
+  clearTimeline: () => set({ activeMessageId: '', toolEvents: [], streamingAssistantMessages: new Map() }),
+  setActiveMessageId: (id) => set({ activeMessageId: id }),
+
+  applyStateUpdatePatch: (data) => {
+    const state = get().currentState;
+    if (!state) return;
+    const updated = { ...state };
+    for (const [path, value] of Object.entries(data)) {
+      _deepSet(updated as Record<string, unknown>, path, value);
+    }
+    set({ currentState: updated });
+  },
+
+  addWorkspaceFile: (file) => {
+    set((s) => ({ workspaceFiles: [...s.workspaceFiles, file] }));
+  },
+
+  // Caches
+  artifactTextCache: new Map(),
+  reportHtmlCache: new Map(),
+  workspaceFileTextCache: new Map(),
+  logFileTextCache: new Map(),
+  clearCaches: () => set({
+    artifactTextCache: new Map(),
+    reportHtmlCache: new Map(),
+    workspaceFileTextCache: new Map(),
+    logFileTextCache: new Map(),
+  }),
+
+  // Derived
+  activeTaskRoot: () => {
+    const state = get().currentState;
+    return state?.task?.task_root || '';
+  },
+  currentL1Node: () => {
+    const state = get().currentState;
+    if (get().l1Scope !== 'node' || !state) return null;
+    const nodes = state.nodes || [];
+    return nodes[get().selectedNodeIndex] || null;
+  },
+}));
+
+function _deepSet(obj: Record<string, unknown>, path: string, value: unknown) {
+  const keys = path.split('.');
+  let current: Record<string, unknown> = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const k = keys[i];
+    if (k === '+' || k === '-') continue;
+    if (!(k in current) || typeof current[k] !== 'object' || current[k] === null) {
+      current[k] = {};
+    }
+    current = current[k] as Record<string, unknown>;
+  }
+  const lastKey = keys[keys.length - 1];
+  if (lastKey === '+' || lastKey === '-') return;
+  const prefix = path.startsWith('+') ? 'append' : path.startsWith('-') ? 'remove' : 'set';
+  if (prefix === 'set') {
+    current[lastKey] = value;
+  } else if (prefix === 'append' && Array.isArray(current[lastKey])) {
+    const arr = current[lastKey] as unknown[];
+    if (Array.isArray(value)) {
+      (current[lastKey] as unknown[]) = [...arr, ...value];
+    } else {
+      (current[lastKey] as unknown[]) = [...arr, value];
+    }
+  }
+}

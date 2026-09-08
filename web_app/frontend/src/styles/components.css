@@ -1,0 +1,393 @@
+/* ── Pill ── */
+.pill {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--soft);
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pill.green {
+  color: var(--green);
+  border-color: rgba(107, 214, 143, 0.36);
+}
+
+.pill.cyan {
+  color: var(--cyan);
+  border-color: rgba(92, 200, 255, 0.36);
+}
+
+.pill.yellow {
+  color: var(--yellow);
+  border-color: rgba(242, 200, 107, 0.36);
+}
+
+.pill.red {
+  color: var(--red);
+  border-color: rgba(255, 107, 122, 0.36);
+}
+
+button.pill {
+  cursor: pointer;
+}
+
+button.pill:hover,
+button.pill.active {
+  color: var(--title-text);
+  border-color: rgba(92, 200, 255, 0.56);
+  background: rgba(92, 200, 255, 0.12);
+}
+
+/* ── Button ── */
+.btn {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--soft);
+  border-radius: 7px;
+  min-height: 32px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+.btn:hover,
+.btn.active {
+  color: var(--title-text);
+  border-color: rgba(92, 200, 255, 0.48);
+  background: rgba(92, 200, 255, 0.12);
+}
+
+.btn.primary {
+  color: #061015;
+  background: var(--cyan);
+  border-color: var(--cyan);
+  font-weight: 760;
+}
+
+.btn.danger {
+  color: #ffd7dc;
+  border-color: rgba(255, 107, 122, 0.42);
+  background: rgba(255, 107, 122, 0.1);
+}
+
+.btn.danger:hover {
+  color: #fff5f6;
+  border-color: rgba(255, 107, 122, 0.66);
+  background: rgba(255, 107, 122, 0.18);
+}
+
+.btn:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+.btn.icon-btn {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+.btn.icon-btn svg {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+}
+
+/* ── Card ── */
+.card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.card-head {
+  min-height: 40px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.card-head .btn {
+  flex: 0 0 auto;
+  min-width: 58px;
+  text-align: center;
+}
+
+.card-title {
+  min-width: 0;
+  color: #edf5ff;
+  font-size: 12px;
+  font-family: var(--mono);
+  font-weight: 720;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-subtitle {
+  color: var(--muted);
+  font-size: 11px;
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+.card-body {
+  padding: 10px;
+}
+
+/* ── Segmented control ── */
+.seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.seg button {
+  border: 1px solid var(--line);
+  background: #0e141b;
+  border-radius: 6px;
+  color: var(--muted);
+  padding: 5px 8px;
+  min-height: 28px;
+  font-size: 12px;
+  font-family: var(--mono);
+}
+
+.seg button.active {
+  color: #f6fbff;
+  border-color: rgba(92, 200, 255, 0.52);
+  background: rgba(92, 200, 255, 0.13);
+}
+
+/* ── Stack ── */
+.stack {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  align-content: start;
+}
+
+/* ── Section title ── */
+.section-title {
+  margin: 14px 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  font-weight: 720;
+}
+
+/* ── KV rows ── */
+.kv {
+  display: grid;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.kv-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.kv-row span:first-child {
+  color: var(--muted);
+}
+
+.kv-row span:last-child {
+  color: var(--soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Metric grid ── */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.metric {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-2);
+  padding: 10px;
+  min-width: 0;
+}
+
+.metric .label {
+  display: block;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.metric .value {
+  color: #f5fbff;
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 780;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metric .hint {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  margin-top: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Bar ── */
+.bar {
+  height: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: #222b35;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.bar > i {
+  display: block;
+  height: 100%;
+  width: var(--w, 50%);
+  background: linear-gradient(90deg, var(--cyan), var(--green));
+}
+
+/* ── Split layout ── */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* ── Box ── */
+.box {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-2);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.box-title {
+  min-height: 36px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  color: #edf5ff;
+  font-family: var(--mono);
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.box-body {
+  padding: 10px;
+}
+
+/* ── Table wrap ── */
+.table-wrap {
+  overflow: auto;
+}
+
+/* ── Color helpers ── */
+.node-id {
+  color: var(--cyan);
+}
+
+.score {
+  color: var(--green);
+}
+
+.warn-text {
+  color: var(--yellow);
+}
+
+.bad {
+  color: var(--red);
+}
+
+.dim {
+  color: var(--muted);
+}
+
+/* ── Code ── */
+.code {
+  margin: 0;
+  padding: 10px;
+  color: #d7e4f2;
+  background: #090d12;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow: auto;
+  max-height: none;
+}
+
+/* ── Topbar user ── */
+.topbar-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--soft);
+}
+
+.topbar-user-icon {
+  font-size: 13px;
+}
+
+.topbar-user-name {
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-logout {
+  padding: 4px 8px;
+  color: var(--muted);
+}
+
+.topbar-logout:hover {
+  color: var(--red);
+}
