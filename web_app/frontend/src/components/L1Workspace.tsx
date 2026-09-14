@@ -5,7 +5,7 @@ import { useT } from '../i18n/useT';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { CsvViewer } from './CsvViewer';
 import { AgentLineageView } from './AgentLineageView';
 import clsx from 'clsx';
@@ -516,16 +516,26 @@ function WorkspaceBrowserView() {
 
   const fileCount = fileNestedTree?.length || 0;
 
-  const handleDownload = () => {
-    if (selectedWorkspacePath) {
-      api.downloadWorkspaceZip([selectedWorkspacePath], activeTaskRoot()).then((blob) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = selectedWorkspacePath.split('/').pop() || t.l1Workspace.file;
-        a.click();
-        URL.revokeObjectURL(url);
-      }).catch(() => {});
+  const handleDownload = async () => {
+    if (!selectedWorkspacePath) return;
+    const base = selectedWorkspacePath.split('/').pop() || t.l1Workspace.file;
+    try {
+      let blob: Blob;
+      let name = base;
+      try {
+        blob = await workspaceDownloadFile(token, sessionId, selectedWorkspacePath);
+      } catch {
+        // Path is a directory (or file download rejected) — fall back to zip.
+        blob = await workspaceDownloadDir(token, sessionId, selectedWorkspacePath);
+        name = base + '.zip';
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
     }
   };
 
@@ -863,19 +873,21 @@ function mapLang(ext: string): string {
 function CodeBlock({ content, lang, limit }: { content: string; lang: string; limit: number }) {
   const display = content.length > limit ? content.slice(0, limit) + '\n\n... [truncated]' : content;
   const hlLang = lang ? mapLang(lang) : 'text';
+  const lightTheme = document.documentElement.getAttribute('data-theme') === 'paper-light';
+  const scheme = lightTheme ? oneLight : oneDark;
 
   return (
     <SyntaxHighlighter
       language={hlLang}
-      style={oneDark}
+      style={scheme}
       showLineNumbers
       wrapLines
-      lineNumberStyle={{ minWidth: '2.5em', paddingRight: '1em', color: '#495162', userSelect: 'none' }}
+      lineNumberStyle={{ minWidth: '2.5em', paddingRight: '1em', color: lightTheme ? 'rgba(92, 70, 40, .45)' : '#495162', userSelect: 'none' }}
       customStyle={{
         margin: 0, padding: '8px 0', height: '100%', minHeight: '100%',
-        fontSize: 13, background: '#181b22', borderRadius: 6,
+        fontSize: 13, background: 'transparent', borderRadius: 6,
       }}
-      codeTagProps={{ style: { fontFamily: 'var(--mono), monospace' } }}
+      codeTagProps={{ style: { fontFamily: 'var(--mono), monospace', background: 'transparent' } }}
     >
       {display}
     </SyntaxHighlighter>

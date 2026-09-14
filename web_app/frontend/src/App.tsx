@@ -282,6 +282,15 @@ export default function App() {
                         >
                           <div className="doc-frame">
                             <div className="doc-toolbar">
+                              <div className="doc-toolbar-actions">
+                                <button
+                                  className="btn"
+                                  onClick={() => setFrontTab('agent-map')}
+                                >
+                                  &larr; {t.topbar.backToAgentMap}
+                                </button>
+                                <button className="doc-action" type="button" onClick={() => window.print()}>{t.reportViewer.pdf}</button>
+                              </div>
                               {reportList.length > 0 ? (
                                 <select
                                   className="report-select"
@@ -300,15 +309,6 @@ export default function App() {
                                   {state?.report?.title || t.reportViewer.keyReport}
                                 </span>
                               )}
-                              <div className="doc-toolbar-actions">
-                                <button className="doc-action" type="button" onClick={() => window.print()}>{t.reportViewer.pdf}</button>
-                                <button
-                                  className="btn"
-                                  onClick={() => setFrontTab('agent-map')}
-                                >
-                                  {t.agentMap.openBoard}
-                                </button>
-                              </div>
                             </div>
                             <div className="doc-scroll">
                               <article className="doc-page">

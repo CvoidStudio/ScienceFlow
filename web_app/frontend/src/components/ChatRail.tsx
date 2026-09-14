@@ -389,7 +389,9 @@ export function ChatRail() {
                       <Mic size={18} />
                     </span>
                   </button>
-                  <button className={clsx('btn primary chat-action-button', actionState === 'stop' && 'danger')}
+                  <button
+                    className={clsx('btn primary chat-action-button', actionState === 'stop' && 'danger')}
+                    data-action-state={actionState === 'stop' ? 'stop' : 'send'}
                     onClick={actionState === 'stop' ? handleCancel : handleSend}
                     disabled={actionState === 'send' && (!input.trim() || chatSendInFlight)}>
                     {actionState === 'send' ? (

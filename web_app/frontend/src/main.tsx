@@ -2,7 +2,15 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ConfigProvider, App as AntApp, theme } from 'antd';
 import App from './App';
-import './styles/all.css';
+import './styles/variables.css';
+import './styles/base.css';
+import './styles/panels.css';
+import './styles/components.css';
+import './styles/chat.css';
+import './styles/workspace.css';
+import './styles/agent-map.css';
+import './styles/doc.css';
+import './styles/overrides.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

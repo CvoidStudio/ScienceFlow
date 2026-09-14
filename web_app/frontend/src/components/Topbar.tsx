@@ -34,7 +34,7 @@ export function Topbar({ authUser, onLogout }: TopbarProps) {
   return (
     <header className="topbar">
       <div className="brand">
-        <button className="brand-logo" type="button" onClick={goToAgentMap} title={t.topbar.backToAgentMap}>
+        <button className="brand-logo" type="button" onClick={goToAgentMap} title={t.topbar.backToAgentMap} aria-label={t.topbar.backToAgentMap}>
           <img src="/favicon.ico" alt={t.topbar.title} className="brand-logo-image" />
         </button>
         <div className="brand-copy">
@@ -52,6 +52,7 @@ export function Topbar({ authUser, onLogout }: TopbarProps) {
         )}
         <button className="btn lang-toggle" type="button"
           title={language === 'en-US' ? t.topbar.switchToEnglish : t.topbar.switchToChinese}
+          aria-label={language === 'en-US' ? t.topbar.switchToEnglish : t.topbar.switchToChinese}
           onClick={toggleLang}>
           <Languages size={14} />
           {language === 'en-US' ? '\u4E2D\u6587' : 'EN'}
@@ -59,12 +60,12 @@ export function Topbar({ authUser, onLogout }: TopbarProps) {
         <div className="top-context-strip">
           <span className="top-context-item status">{t.topbar.status}</span>
         </div>
-        <button className="btn top-batch-toggle" onClick={() => setBatchPanelCollapsed(!batchPanelCollapsed)}>
+        <button className="btn top-batch-toggle" type="button" onClick={() => setBatchPanelCollapsed(!batchPanelCollapsed)}>
           <span>{t.topbar.batch}</span>
           <span className="batch-rail-count">{runCount}</span>
         </button>
         {onLogout && (
-          <button className="btn topbar-logout" onClick={onLogout} title="Sign out">
+          <button className="btn topbar-logout" type="button" onClick={onLogout} title={t.topbar.logout} aria-label={t.topbar.logout}>
             <LogOut size={16} />
           </button>
         )}

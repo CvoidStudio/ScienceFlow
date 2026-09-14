@@ -10,6 +10,7 @@ export interface Translations {
     backToAgentMap: string;
     switchToChinese: string;
     switchToEnglish: string;
+    logout: string;
   };
   agentMap: {
     imgAlt: string;
@@ -239,10 +240,11 @@ export const zhCN: Translations = {
     backToAgentMap: '返回Agent地图',
     switchToChinese: '切换到中文',
     switchToEnglish: '切换到英文',
+    logout: '退出登录',
   },
   agentMap: {
     imgAlt: 'Agent地图工作空间',
-    openBoard: '返回Agent地图',
+    openBoard: '打开Agent地图',
     openBoardAria: '打开L1面板',
     keyReport: '关键报告',
     keyReportAria: '打开关键报告',
@@ -392,7 +394,7 @@ export const zhCN: Translations = {
   reportViewer: {
     reportNav: '报告导航',
     keyReport: '关键报告',
-    pdf: 'PDF',
+    pdf: '打印PDF',
     scienceflow: 'ScienceFlow',
     defaultLead: 'ScienceFlow 工作空间报告。',
   },
@@ -468,10 +470,11 @@ export const enUS: Translations = {
     backToAgentMap: 'Back to Agent Map',
     switchToChinese: '切换到中文',
     switchToEnglish: 'Switch to English',
+    logout: 'Sign out',
   },
   agentMap: {
     imgAlt: 'Agent map workspace',
-    openBoard: 'Back to Agent Map',
+    openBoard: 'Open Agent Map',
     openBoardAria: 'Open L1 Board',
     keyReport: 'Key Report',
     keyReportAria: 'Open Key Report',
@@ -621,7 +624,7 @@ export const enUS: Translations = {
   reportViewer: {
     reportNav: 'Report navigation',
     keyReport: 'Key Report',
-    pdf: 'PDF',
+    pdf: 'Print PDF',
     scienceflow: 'ScienceFlow',
     defaultLead: 'ScienceFlow workspace report.',
   },

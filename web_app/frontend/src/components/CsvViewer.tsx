@@ -44,8 +44,6 @@ export function CsvViewer({ content, maxRows = 2000 }: CsvViewerProps) {
     );
   }
 
-  const columnWidth = Math.max(110, Math.min(200, Math.floor(920 / headers.length)));
-
   return (
     <div className="csv-viewer">
       <div className="csv-toolbar">
@@ -61,7 +59,7 @@ export function CsvViewer({ content, maxRows = 2000 }: CsvViewerProps) {
             <tr>
               <th className="csv-row-num">#</th>
               {headers.map((h) => (
-                <th key={h} style={{ minWidth: columnWidth, maxWidth: columnWidth }} title={h}>
+                <th key={h} title={h}>
                   {h}
                 </th>
               ))}
@@ -72,7 +70,7 @@ export function CsvViewer({ content, maxRows = 2000 }: CsvViewerProps) {
               <tr key={i}>
                 <td className="csv-row-num dim">{i + 1}</td>
                 {headers.map((h) => (
-                  <td key={h} title={row[h] || ''} style={{ minWidth: columnWidth, maxWidth: columnWidth }}>
+                  <td key={h} title={row[h] || ''}>
                     {row[h] ?? ''}
                   </td>
                 ))}
