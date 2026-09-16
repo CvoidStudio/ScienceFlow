@@ -126,3 +126,9 @@
       display: grid;
       grid-template-rows: auto 1fr;
     }
+
+    :root {
+      --r-sm: 6px;
+      --r-md: 8px;
+    }
+

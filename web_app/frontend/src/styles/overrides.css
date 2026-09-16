@@ -362,7 +362,7 @@
     }
 
     html[data-theme="paper-light"] .composer-tools {
-      border-radius: 7px;
+      border-radius: var(--r-md);
       background: linear-gradient(180deg, rgba(255, 250, 240, .08), rgba(255, 250, 240, .88));
     }
 
@@ -1114,7 +1114,7 @@
     .agent-map-report-tab .doc-page .md-code-wrap,
     .agent-map-report-tab .doc-page pre,
     .agent-map-report-tab .doc-page .md-code {
-      border-radius: 5px;
+      border-radius: var(--r-sm);
     }
 
     html[data-theme="paper-light"] .agent-map-report-tab .doc-scroll {
@@ -2662,7 +2662,7 @@
       position: relative;
       width: 32px;
       height: 16px;
-      border-radius: 8px;
+      border-radius: var(--r-md);
       background: rgba(92, 200, 255, .18);
       border: 1px solid rgba(92, 200, 255, .35);
       transition: background .25s ease, border-color .25s ease;
@@ -2762,7 +2762,7 @@
 
     ::-webkit-scrollbar-thumb {
       background: rgba(163, 178, 194, .28);
-      border-radius: 8px;
+      border-radius: var(--r-md);
       border: 2px solid transparent;
       background-clip: padding-box;
     }
@@ -2833,7 +2833,7 @@
     .tool-trace::-webkit-scrollbar-thumb,
     .workspace-file-list::-webkit-scrollbar-thumb,
     .workspace-file-viewer::-webkit-scrollbar-thumb {
-      border-radius: 6px;
+      border-radius: var(--r-sm);
     }
 
     /* File head: long names must not push action buttons out of the viewer */
@@ -2870,3 +2870,21 @@
       margin-left: auto;
       flex: 0 0 auto;
     }
+
+
+    /* ── Global interaction polish ── */
+    :where(button, a, [role="button"], input, select, textarea, [tabindex]):focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: 2px;
+    }
+
+    :where(button, a, [role="button"], select, .message, .timeline-event) {
+      transition: background-color .13s ease, border-color .13s ease, color .13s ease, box-shadow .13s ease;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      :where(button, a, [role="button"], select, .message, .timeline-event) {
+        transition: none;
+      }
+    }
+

@@ -94,7 +94,7 @@
       max-width: 100%;
       overflow-x: auto;
       border: 1px solid rgba(255, 255, 255, .08);
-      border-radius: 6px;
+      border-radius: var(--r-sm);
     }
 
     .chat-markdown .md-table {
@@ -114,7 +114,7 @@
       max-width: 100%;
       overflow: hidden;
       border: 1px solid rgba(255, 255, 255, .08);
-      border-radius: 6px;
+      border-radius: var(--r-sm);
       background: #080d12;
     }
 
@@ -188,7 +188,7 @@
       min-width: 0;
       max-width: 100%;
       border: 1px solid rgba(92, 200, 255, .18);
-      border-radius: 7px;
+      border-radius: var(--r-md);
       background: rgba(7, 14, 21, .72);
       overflow: hidden;
     }
@@ -339,7 +339,7 @@
       padding: 6px 7px;
       overflow: auto;
       border: 1px solid rgba(255, 255, 255, .07);
-      border-radius: 5px;
+      border-radius: var(--r-sm);
       background: #060b10;
       color: #aebdca;
       font-family: var(--mono);
@@ -430,7 +430,7 @@
       color: var(--soft);
       background: var(--panel-3);
       border: 1px solid var(--line);
-      border-radius: 6px;
+      border-radius: var(--r-sm);
       font-family: var(--mono);
       font-size: 12px;
       line-height: 1.55;
@@ -550,4 +550,56 @@
 
     .agent-block-head-reasoning {
       color: var(--orange);
+    }
+
+
+    /* ── Chat message polish ── */
+    .message {
+      animation: msgIn .18s ease-out;
+    }
+
+    @keyframes msgIn {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    .message:hover {
+      border-color: rgba(92, 200, 255, .3);
+    }
+
+    .message.user:hover {
+      border-color: rgba(92, 200, 255, .5);
+    }
+
+    .message.platform:hover {
+      border-color: rgba(107, 214, 143, .48);
+    }
+
+    .message.tool:hover {
+      border-color: rgba(92, 200, 255, .42);
+    }
+
+    .agent-thinking {
+      border: 1px dashed var(--line);
+      border-radius: var(--r-md);
+      background: rgba(92, 200, 255, .03);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .message {
+        animation: none;
+      }
+    }
+
+
+/* ── polish: table zebra stripes ── */
+    .chat-markdown .md-table tbody tr:nth-child(even) {
+      background: rgba(255, 255, 255, .02);
     }
