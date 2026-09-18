@@ -17,6 +17,58 @@ interface ChatEventPayload {
   data: string;
 }
 
+// Run states that must release the composer. The chat backend signals
+// completion via run_finished or a terminal run_state (older builds only
+// emit run_state, so both paths have to unlock chatBusy).
+const TERMINAL_RUN_STATES = new Set([
+  'finished',
+  'completed',
+  'failed',
+  'error',
+  'cancelled',
+  'canceled',
+  'stopped',
+  'aborted',
+  'idle',
+]);
+const ACTIVE_RUN_STATES = new Set([
+  'running',
+  'started',
+  'in_progress',
+  'processing',
+  'busy',
+  'working',
+  'queued',
+]);
+
+// Payload may be {"state":"finished"} or a bare "finished" string depending on
+// the backend version, so parse defensively.
+function extractRunState(data: string): string {
+  try {
+    const d = JSON.parse(data) as unknown;
+    if (typeof d === 'string') return d.trim().toLowerCase();
+    if (d && typeof d === 'object') {
+      const o = d as Record<string, unknown>;
+      const v = o.state ?? o.status ?? o.run_state ?? o.value;
+      if (typeof v === 'string') return v.trim().toLowerCase();
+    }
+  } catch {
+    /* plain-text payload */
+  }
+  return data.trim().toLowerCase().replace(/^"+|"+$/g, '');
+}
+
+function finishRun(
+  store: ReturnType<typeof useAppStore.getState>,
+  failed: boolean
+) {
+  store.setChatBusy(false);
+  store.setChatRunState(failed ? 'failed' : 'completed');
+  store.refreshState({ force: true });
+  store.fetchWorkspaceFiles();
+  store.fetchReports();
+}
+
 function handleEvent(name: string, data: string) {
   const store = useAppStore.getState();
   switch (name) {
@@ -31,11 +83,7 @@ function handleEvent(name: string, data: string) {
 
     case 'run_finished':
       debug.log('SSE', 'run_finished received');
-      store.setChatBusy(false);
-      store.setChatRunState('completed');
-      store.refreshState({ force: true });
-      store.fetchWorkspaceFiles();
-      store.fetchReports();
+      finishRun(store, false);
       break;
 
     case 'tool_started':
@@ -146,8 +194,38 @@ function handleEvent(name: string, data: string) {
       }
       break;
 
-    case 'assistant_message':
-    case 'run_state':
+    case 'assistant_message': {
+      // Some backends end a turn with a full assistant_message instead of
+      // run_finished/run_state. Treat it as terminal only when it carries an
+      // explicit completion marker, never on bare content.
+      try {
+        const d = JSON.parse(data) as Record<string, unknown>;
+        if (
+          d.finish_reason != null ||
+          d.is_final === true ||
+          d.done === true
+        ) {
+          debug.log('SSE', 'assistant_message final received');
+          finishRun(store, false);
+        }
+      } catch {
+        /* ignore */
+      }
+      break;
+    }
+
+    case 'run_state': {
+      const s = extractRunState(data);
+      if (TERMINAL_RUN_STATES.has(s)) {
+        debug.log('SSE', 'run_state terminal:', s);
+        finishRun(store, s === 'failed' || s === 'error');
+      } else if (ACTIVE_RUN_STATES.has(s)) {
+        store.setChatBusy(true);
+        store.setChatRunState('running');
+      }
+      break;
+    }
+
     case 'session_created':
     default:
       break;
@@ -170,6 +248,10 @@ export function useSSE() {
   // Start/stop the Go-side SSE stream per chat session.
   useEffect(() => {
     if (!chatSessionId) return;
+    // A fresh stream connection replays history from the beginning; start from
+    // an idle composer so a replayed session_busy cannot leave it locked.
+    // Live runs re-lock immediately via run_started/session_busy.
+    useAppStore.getState().setChatBusy(false);
     api.startChatStream(chatSessionId);
     useAppStore.getState().clearLogEntries();
     return () => {
