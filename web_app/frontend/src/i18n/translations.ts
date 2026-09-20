@@ -99,6 +99,9 @@ export interface Translations {
     taskBoard: string;
     taskStatus: string;
     noMonitorData: string;
+    loadingMonitor: string;
+    collapse: string;
+    expand: string;
     runtimeStatus: string;
     control: string;
     codeAgent: string;
@@ -119,6 +122,16 @@ export interface Translations {
     activeAlerts: string;
     noActiveAlerts: string;
     costAndLatency: string;
+    cpu: string;
+    memory: string;
+    storage: string;
+    cost: string;
+    tokensReserved: string;
+    reserved: string;
+    queue: string;
+    queued: string;
+    done: string;
+    total: string;
     cacheHit: string;
     promptReuseWeighted: string;
     tokensIn: string;
@@ -332,6 +345,9 @@ export const zhCN: Translations = {
     taskBoard: '任务看板',
     taskStatus: '任务状态:',
     noMonitorData: '无可用监控数据',
+    loadingMonitor: '正在加载监控数据...',
+    collapse: '收起',
+    expand: '展开',
     runtimeStatus: '运行时状态',
     control: '控制',
     codeAgent: '代码智能体',
@@ -353,7 +369,17 @@ export const zhCN: Translations = {
     riskHints: '风险提示',
     activeAlerts: '条活跃告警',
     noActiveAlerts: '无活跃告警',
-    costAndLatency: '成本与延迟',
+    costAndLatency: '资源消耗',
+    cpu: 'CPU',
+    memory: '内存',
+    storage: '存储',
+    cost: '成本',
+    tokensReserved: 'Tokens',
+    reserved: '预留',
+    queue: '队列',
+    queued: '排队中',
+    done: '完成',
+    total: '总计',
     cacheHit: '缓存命中',
     promptReuseWeighted: '提示词复用加权',
     tokensIn: '输入Token',
@@ -565,6 +591,9 @@ export const enUS: Translations = {
     taskBoard: 'Task Board',
     taskStatus: 'Task status:',
     noMonitorData: 'No monitor data available',
+    loadingMonitor: 'Loading monitor data...',
+    collapse: 'Collapse',
+    expand: 'Expand',
     runtimeStatus: 'Runtime Status',
     control: 'control',
     codeAgent: 'code_agent',
@@ -586,7 +615,17 @@ export const enUS: Translations = {
     riskHints: 'Risk Hints',
     activeAlerts: 'active alerts',
     noActiveAlerts: 'no active alerts',
-    costAndLatency: 'Cost And Latency',
+    costAndLatency: 'Resource Usage',
+    cpu: 'CPU',
+    memory: 'Memory',
+    storage: 'Storage',
+    cost: 'Cost',
+    tokensReserved: 'Tokens',
+    reserved: 'Reserved',
+    queue: 'Queue',
+    queued: 'queued',
+    done: 'Done',
+    total: 'total',
     cacheHit: 'cache hit',
     promptReuseWeighted: 'prompt reuse weighted',
     tokensIn: 'tokens in',

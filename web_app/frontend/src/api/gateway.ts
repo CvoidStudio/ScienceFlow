@@ -14,6 +14,7 @@ import {
   GatewayAgentStatus,
   GatewayStopAgent,
   GatewayFetchFiles,
+  GatewayFetchMonitor,
   WorkspaceDownload,
   WorkspaceUploadFiles,
   SetGatewayURL,
@@ -170,6 +171,12 @@ export function gatewayStopAgent(token: string, sessionId: string): Promise<Gate
 
 export function gatewayFetchFiles(token: string, sessionId: string): Promise<FileTreeResponse> {
   return GatewayFetchFiles(token, sessionId) as Promise<FileTreeResponse>;
+}
+
+export type GatewayMonitorMetrics = wailsModels.GatewayMonitorMetrics;
+
+export function gatewayFetchMonitor(token: string, sessionId: string): Promise<GatewayMonitorMetrics> {
+  return GatewayFetchMonitor(token, sessionId) as Promise<GatewayMonitorMetrics>;
 }
 
 export type { FileNode };

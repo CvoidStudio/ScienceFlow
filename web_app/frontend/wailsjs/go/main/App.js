@@ -26,6 +26,10 @@ export function GatewayFetchFiles(arg1, arg2) {
   return window['go']['main']['App']['GatewayFetchFiles'](arg1, arg2);
 }
 
+export function GatewayFetchMonitor(arg1, arg2) {
+  return window['go']['main']['App']['GatewayFetchMonitor'](arg1, arg2);
+}
+
 export function GatewayGetSession(arg1, arg2) {
   return window['go']['main']['App']['GatewayGetSession'](arg1, arg2);
 }

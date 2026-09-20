@@ -147,18 +147,36 @@ export function ChatRail() {
   };
 
   const handleCancel = async () => {
-    if (chatSessionId) {
-      try {
-        const { token } = useGatewayStore.getState();
-        if (token) await gatewayStopAgent(token, chatSessionId);
-      } catch { /* silent */ }
+    const { token, sessionId: gatewaySessionId } = useGatewayStore.getState();
+    const sessionId = gatewaySessionId || chatSessionId;
+    debug.log('ChatRail', 'handleCancel clicked', { sessionId, hasToken: !!token, chatBusy, chatRunState });
+    if (!token || !sessionId) {
+      debug.warn('ChatRail', 'cannot stop agent: missing gateway token or session id');
+      return;
     }
-    setChatBusy(false);
-    setChatRunState('idle');
+
+    setChatRunState('cancelling');
+    try {
+      const task = await gatewayStopAgent(token, sessionId);
+      debug.log('ChatRail', 'stop response:', task);
+      setChatBusy(false);
+      setChatRunState(task.status === 'done' ? 'completed' : 'cancelled');
+      await fetchSessionList();
+    } catch (e: unknown) {
+      debug.error('ChatRail', 'stop agent failed:', e);
+      setChatBusy(true);
+      setChatRunState('running');
+    }
   };
 
   const handleRefreshSessions = async () => {
-    await fetchSessionList();
+    if (switchBusy) return;
+    setSwitchBusy(true);
+    try {
+      await fetchSessionList();
+    } finally {
+      setSwitchBusy(false);
+    }
   };
 
   const handleSwitchSession = async (sessionId: string) => {
@@ -229,7 +247,9 @@ export function ChatRail() {
     if (voiceState === 'idle') setTimeout(() => setVoiceState('listening'), 500);
   };
 
-  const actionState = chatBusy ? 'stop' : 'send';
+  const isCancelling = chatRunState === 'cancelling';
+  const isAgentActive = chatBusy || chatRunState === 'running' || isCancelling;
+  const actionState = isAgentActive ? 'stop' : 'send';
 
   return (
     <aside className="card chat-rail">
@@ -238,7 +258,7 @@ export function ChatRail() {
         <div className="chat-head-actions">
           <span className={clsx('chat-status-badge', chatBusy && 'busy')}>
             <span className={clsx('state-dot', chatBusy ? 'pulse' : 'idle')} />
-            {chatRunState === 'running' ? t.chatRail.running : chatRunState === 'completed' ? t.chatRail.done : t.common.idle}
+            {chatRunState === 'running' ? t.chatRail.running : chatRunState === 'cancelling' ? '停止中' : chatRunState === 'cancelled' ? '已停止' : chatRunState === 'completed' ? t.chatRail.done : t.common.idle}
           </span>
           <button className="btn" id="frontToggleSessions" onClick={() => setSessionsPanelOpen(!sessionsPanelOpen)}>
             {t.chatRail.sessions}
@@ -395,7 +415,7 @@ export function ChatRail() {
                     className={clsx('btn primary chat-action-button', actionState === 'stop' && 'danger')}
                     data-action-state={actionState === 'stop' ? 'stop' : 'send'}
                     onClick={actionState === 'stop' ? handleCancel : handleSend}
-                    disabled={actionState === 'send' && (!input.trim() || chatSendInFlight)}>
+                    disabled={isCancelling || (actionState === 'send' && (!input.trim() || chatSendInFlight))}>
                     {actionState === 'send' ? (
                       <span className="chat-action-icon send"><ArrowUp size={18} strokeWidth={2.5} /></span>
                     ) : (

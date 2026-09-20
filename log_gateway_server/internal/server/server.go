@@ -107,6 +107,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /sessions/{id}/agent", s.handleAgentStatus)
 	mux.HandleFunc("DELETE /sessions/{id}/agent", s.handleAgentStop)
 	mux.HandleFunc("GET /sessions/{id}/files", s.handleListFiles)
+	mux.HandleFunc("GET /sessions/{id}/monitor", s.handleSessionMonitor)
 	mux.HandleFunc("GET /api/workspace/file/content", s.handleWorkspaceFileContent)
 	mux.HandleFunc("POST /api/workspace/file/upload", s.handleWorkspaceFileUpload)
 	mux.HandleFunc("GET /api/workspace/file/download", s.handleWorkspaceFileDownload)
@@ -342,7 +343,13 @@ func (s *Server) sessionJSON(id string, sess *session.Session) map[string]any {
 	}
 	if s.agent != nil {
 		if task := s.agent.Current(id); task != nil {
-			out["agent"] = map[string]any{"status": "active", "task": task.Snapshot()}
+			snapshot := task.Snapshot()
+			active := snapshot.Status == agent.StatusQueued || snapshot.Status == agent.StatusRunning
+			status := "idle"
+			if active {
+				status = "active"
+			}
+			out["agent"] = map[string]any{"status": status, "task": snapshot}
 		} else {
 			out["agent"] = map[string]any{"status": "idle"}
 		}

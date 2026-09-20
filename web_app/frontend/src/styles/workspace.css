@@ -82,9 +82,89 @@
       color: var(--soft);
     }
 
+    .l1-monitor {
+      overflow: hidden;
+    }
+
+    .l1-monitor-toggle {
+      width: 100%;
+      min-height: 34px;
+      display: grid;
+      grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      border: 0;
+      border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+      background: color-mix(in srgb, var(--panel-2) 52%, transparent);
+      color: var(--title-text);
+      padding: 8px 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .l1-monitor-toggle:hover,
+    .l1-monitor-toggle:focus-visible {
+      background: color-mix(in srgb, var(--cyan) 10%, var(--panel));
+      outline: none;
+    }
+
+    .l1-monitor-toggle span {
+      min-width: 0;
+      color: var(--muted);
+      font-size: 11px;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .l1-monitor-toggle i {
+      color: var(--muted);
+      font-style: normal;
+      line-height: 1;
+      transition: transform .15s ease;
+    }
+
+    .l1-monitor:not(.is-collapsed) .l1-monitor-toggle i {
+      transform: rotate(180deg);
+    }
+
+    .l1-grid.monitor-collapsed {
+      grid-template-rows: minmax(430px, 1fr) auto;
+    }
+
+    .l1-grid.monitor-collapsed > .l1-monitor {
+      height: auto;
+      align-self: start;
+    }
+
+    .l1-monitor.is-collapsed {
+      grid-template-rows: auto;
+      min-height: auto;
+    }
+
+    .l1-monitor.is-collapsed .l1-monitor-toggle {
+      border-bottom-color: transparent;
+    }
+
+    .l1-monitor.is-collapsed .card-body {
+      display: none;
+    }
+
     .l1-monitor .card-body {
       min-height: 0;
       overflow: auto;
+    }
+
+    .monitor-empty {
+      padding: 14px;
+      border: 1px dashed color-mix(in srgb, var(--line) 72%, transparent);
+      border-radius: var(--r-md);
+      background: color-mix(in srgb, var(--panel-2) 44%, transparent);
+      font-family: var(--mono);
+      font-size: 12px;
     }
 
     .l1-monitor .card-body {
@@ -508,6 +588,7 @@
 
     .workspace-file-list {
       display: grid;
+      grid-template-columns: minmax(0, 1fr);
       align-content: start;
       gap: 4px;
       padding: 8px;
@@ -530,11 +611,20 @@
       line-height: 1;
     }
 
-    .workspace-file-item {
+    .workspace-file-list > div {
       width: 100%;
       min-width: 0;
+    }
+
+    .workspace-file-item {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
       display: flex;
+      align-items: center;
       gap: 3px;
+      overflow: hidden;
       border: 1px solid transparent;
       border-radius: var(--r-sm);
       background: transparent;
@@ -544,6 +634,30 @@
       font-family: var(--mono);
       font-size: 11px;
       cursor: pointer;
+    }
+
+    .workspace-file-arrow {
+      flex: 0 0 12px;
+    }
+
+    .workspace-file-name {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .workspace-file-size {
+      flex: 0 1 28%;
+      min-width: 0;
+      max-width: 28%;
+      margin-left: auto;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 10px;
+      text-align: right;
     }
 
     .workspace-file-row {
@@ -1055,10 +1169,10 @@
       min-width: 0;
       display: grid;
       align-content: start;
-      border: 1px solid rgba(255, 255, 255, .06);
+      border: 1px solid color-mix(in srgb, var(--line) 68%, transparent);
       border-radius: var(--r-md);
-      background: rgba(0, 0, 0, .12);
-      padding: 9px;
+      background: color-mix(in srgb, var(--panel-2) 52%, transparent);
+      padding: 10px;
     }
 
     .monitor-subpanel > .section-title:first-child {
@@ -1171,10 +1285,10 @@
       min-width: 0;
       display: grid;
       gap: 4px;
-      border: 1px solid rgba(255, 255, 255, .06);
+      border: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
       border-radius: var(--r-md);
-      background: rgba(0, 0, 0, .12);
-      padding: 8px;
+      background: color-mix(in srgb, var(--panel-2) 48%, transparent);
+      padding: 9px;
     }
 
     .latency-metric strong {

@@ -134,6 +134,10 @@ interface AppState {
   batchPanelCollapsed: boolean;
   setBatchPanelCollapsed: (collapsed: boolean) => void;
 
+  // Monitor panel
+  monitorCollapsed: boolean;
+  setMonitorCollapsed: (collapsed: boolean) => void;
+
   // Workspace
   workspaceFiles: WorkspaceFile[];
   workspaceFilesSignature: string;
@@ -356,6 +360,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Batch panel
   batchPanelCollapsed: true,
   setBatchPanelCollapsed: (collapsed) => set({ batchPanelCollapsed: collapsed }),
+
+  // Monitor panel
+  monitorCollapsed: false,
+  setMonitorCollapsed: (collapsed) => set({ monitorCollapsed: collapsed }),
 
   // Workspace
   workspaceFiles: [],

@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { useGatewayStore } from '../store/useGatewayStore';
+import { useAppStore } from '../store/useAppStore';
 import {
   formatGatewayLogEvent,
+  gatewayAgentStatus,
   type GatewayLogEvent,
   type GatewayStatusEvent,
   type GatewayBackfillEvent,
@@ -39,11 +41,37 @@ export function useGatewayStream() {
       useGatewayStore.getState().setStatus(e.status, e.error);
     });
 
+    const statusTimer = window.setInterval(async () => {
+      const { token, sessionId } = useGatewayStore.getState();
+      if (!token || !sessionId) return;
+      try {
+        const status = await gatewayAgentStatus(token, sessionId);
+        const app = useAppStore.getState();
+        const taskStatus = status.task?.status || status.status;
+        if (taskStatus === 'running' || taskStatus === 'queued') {
+          app.setChatBusy(true);
+          app.setChatRunState('running');
+        } else if (taskStatus === 'killed' || taskStatus === 'cancelled') {
+          app.setChatBusy(false);
+          app.setChatRunState('cancelled');
+        } else if (taskStatus === 'done' || taskStatus === 'completed') {
+          app.setChatBusy(false);
+          app.setChatRunState('completed');
+        } else if (taskStatus === 'failed' || taskStatus === 'error' || taskStatus === 'idle') {
+          app.setChatBusy(false);
+          app.setChatRunState(taskStatus === 'idle' ? 'idle' : 'failed');
+        }
+      } catch {
+        // The SSE stream remains the primary live status channel.
+      }
+    }, 1500);
+
     return () => {
       offLog();
       offBackfill();
       offBackfillDone();
       offStatus();
+      window.clearInterval(statusTimer);
     };
   }, []);
 }

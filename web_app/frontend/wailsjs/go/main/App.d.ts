@@ -14,6 +14,8 @@ export function GatewayDeleteSession(arg1:string,arg2:string):Promise<void>;
 
 export function GatewayFetchFiles(arg1:string,arg2:string):Promise<main.FileTreeResponse>;
 
+export function GatewayFetchMonitor(arg1:string,arg2:string):Promise<main.GatewayMonitorMetrics>;
+
 export function GatewayGetSession(arg1:string,arg2:string):Promise<main.GatewaySession>;
 
 export function GatewayInvokeAgent(arg1:string,arg2:string,arg3:main.GatewayInvokeRequest):Promise<main.GatewayTaskSnapshot>;

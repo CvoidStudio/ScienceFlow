@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -90,6 +92,7 @@ type Snapshot struct {
 	Workspace  string     `json:"workspace"`
 	LogDir     string     `json:"log_dir"`
 	RawLogPath string     `json:"raw_log_path,omitempty"`
+	PID        int        `json:"pid,omitempty"`
 	StartedAt  string     `json:"started_at,omitempty"`
 	EndedAt    string     `json:"ended_at,omitempty"`
 	ExitCode   int        `json:"exit_code,omitempty"`
@@ -109,6 +112,9 @@ func (t *Task) Snapshot() Snapshot {
 		LogDir:     t.LogDir,
 		RawLogPath: t.RawLogPath,
 		ExitCode:   t.exitCode,
+	}
+	if t.cmd != nil && t.cmd.Process != nil {
+		s.PID = t.cmd.Process.Pid
 	}
 	if !t.started.IsZero() {
 		s.StartedAt = t.started.UTC().Format(time.RFC3339Nano)
@@ -154,8 +160,8 @@ type Runner struct {
 	OnTaskStart  func(t *Task)
 	OnTaskFinish func(t *Task)
 
-	queue    chan *Task     // buffered FIFO; capacity = MaxQueue
-	dispatch chan struct{}  // capacity-1 signal to wake the dispatcher
+	queue    chan *Task    // buffered FIFO; capacity = MaxQueue
+	dispatch chan struct{} // capacity-1 signal to wake the dispatcher
 	stop     chan struct{}
 	wg       sync.WaitGroup
 }
@@ -203,6 +209,10 @@ func (r *Runner) rootPath() (string, error) {
 	}
 	if root == "" {
 		return "", errors.New("SCIFLOW_WORKSPACE_ROOT is not set and agent.workspace_root is empty")
+	}
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve workspace root: %w", err)
 	}
 	return root, nil
 }
@@ -338,14 +348,25 @@ func (r *Runner) Stop(id string) bool {
 	t, ok := r.running[id]
 	r.mu.Unlock()
 	if !ok {
+		log.Printf("[agent-debug] stop id=%s found=false", id)
 		return false
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	pid := 0
+	if t.cmd != nil && t.cmd.Process != nil {
+		pid = t.cmd.Process.Pid
+	}
+	log.Printf("[agent-debug] stop id=%s status=%s killed=%v has_cmd=%v pid=%d", id, t.status, t.killed, t.cmd != nil, pid)
 	t.killed = true
 	if t.cmd != nil && t.cmd.Process != nil {
-		_ = t.cmd.Process.Kill()
-		return true
+		err := killProcessTree(t.cmd)
+		log.Printf("[agent-debug] kill-process-tree id=%s pid=%d err=%v", id, t.cmd.Process.Pid, err)
+		if err == nil {
+			t.status = StatusKilled
+			t.finished = time.Now()
+		}
+		return err == nil
 	}
 	if t.status == StatusQueued {
 		t.status = StatusKilled
@@ -354,6 +375,20 @@ func (r *Runner) Stop(id string) bool {
 	// StatusRunning with no live process yet (cmd.Start() not reached): the
 	// killed flag makes runTask terminate the process right after it starts.
 	return true
+}
+
+func killProcessTree(cmd *exec.Cmd) error {
+	if cmd == nil || cmd.Process == nil {
+		return nil
+	}
+	if runtime.GOOS == "windows" {
+		out, err := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid)).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("taskkill pid %d: %w (%s)", cmd.Process.Pid, err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+	return cmd.Process.Kill()
 }
 
 // timeoutFor returns the wall-clock cap for a task of the given mode: heavy
@@ -574,7 +609,7 @@ func (r *Runner) runTask(t *Task) {
 	killed := t.killed
 	t.mu.Unlock()
 	if killed {
-		_ = cmd.Process.Kill()
+		_ = killProcessTree(cmd)
 	}
 
 	err = cmd.Wait()
@@ -617,11 +652,15 @@ func (r *Runner) finalize(t *Task) {
 
 // writeManifest emits a single-task YAML manifest consumed by `cli repl -m`.
 func (r *Runner) writeManifest(ws, user, session, query string) (string, error) {
-	queryFile := filepath.Join(ws, "gateway_first_user.txt")
+	absWS, err := filepath.Abs(ws)
+	if err != nil {
+		return "", fmt.Errorf("resolve workspace path: %w", err)
+	}
+	queryFile := filepath.Join(absWS, "gateway_first_user.txt")
 	if err := os.WriteFile(queryFile, []byte(query), 0o644); err != nil {
 		return "", fmt.Errorf("write first-user query: %w", err)
 	}
-	manifest := filepath.Join(ws, "gateway_manifest.yaml")
+	manifest := filepath.Join(absWS, "gateway_manifest.yaml")
 
 	var b strings.Builder
 	b.WriteString("defaults:\n")
@@ -738,12 +777,11 @@ func (r *Runner) buildEnv(t *Task) []string {
 		root = os.Getenv("SCIFLOW_WORKSPACE_ROOT")
 	}
 	if root != "" {
-		env = append(env, "SCIFLOW_WORKSPACE_ROOT="+root)
+		root, err := filepath.Abs(root)
+		if err == nil {
+			env = append(env, "SCIFLOW_WORKSPACE_ROOT="+root)
+		}
 	}
-	// Critical: Python block-buffers stdout when it is not a TTY (e.g. a pipe
-	// to our RAW.log), so scienceflow's progress would sit in an 8KB buffer
-	// and appear to "hang" after the header. Force unbuffered output so each
-	// line streams to RAW.log (and SSE) in real time.
 	env = append(env, "PYTHONUNBUFFERED=1")
 	return env
 }
