@@ -384,11 +384,13 @@ export function ChatRail() {
                 </Tooltip>
 
                 <div className="composer-actions">
-                  <button className={clsx('btn chat-action-button chat-voice-button', voiceState !== 'idle' && `is-${voiceState}`)} onClick={handleVoiceToggle}>
-                    <span className="chat-action-icon voice">
-                      <Mic size={18} />
-                    </span>
-                  </button>
+                  {false && (
+                    <button className={clsx('btn chat-action-button chat-voice-button', voiceState !== 'idle' && `is-${voiceState}`)} onClick={handleVoiceToggle}>
+                      <span className="chat-action-icon voice">
+                        <Mic size={18} />
+                      </span>
+                    </button>
+                  )}
                   <button
                     className={clsx('btn primary chat-action-button', actionState === 'stop' && 'danger')}
                     data-action-state={actionState === 'stop' ? 'stop' : 'send'}

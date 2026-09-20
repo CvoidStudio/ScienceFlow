@@ -7,6 +7,7 @@ import type {
   Theme,
   PanelLayout,
   FontSize,
+  AgentMapBackground,
   L1Scope,
   ChatRunState,
   ChatRouteMode,
@@ -21,16 +22,33 @@ import type {
 } from '../types';
 import type { Lang } from '../i18n/translations';
 import * as api from '../api/client';
+import { gatewayFetchFiles, workspaceDownloadFile } from '../api/gateway';
+import { useGatewayStore } from './useGatewayStore';
+
+type ReportListItem = {
+  path: string;
+  filename: string;
+  relative_path: string;
+  title: string;
+  created_at: string;
+  session_id?: string;
+  session_label?: string;
+  task_root?: string;
+  report_key: string;
+  source?: 'api' | 'gateway';
+};
 
 interface AppState {
   // Theme & layout
   theme: Theme;
   panelLayout: PanelLayout;
   fontSize: FontSize;
+  agentMapBackground: AgentMapBackground;
   language: Lang;
   setTheme: (theme: Theme) => void;
   setPanelLayout: (layout: PanelLayout) => void;
   setFontSize: (size: FontSize) => void;
+  setAgentMapBackground: (background: AgentMapBackground) => void;
   setLanguage: (lang: Lang) => void;
 
   // View
@@ -135,7 +153,7 @@ interface AppState {
   clearLogEntries: () => void;
 
   // Reports (recursively scan task_root for .md files)
-  reportList: { path: string; filename: string; relative_path: string; title: string; created_at: string }[];
+  reportList: ReportListItem[];
   selectedReportPath: string;
   reportContent: string;
   fetchReports: () => Promise<void>;
@@ -167,6 +185,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   theme: (localStorage.getItem('scienceflow.theme') as Theme) || 'scienceflow-dark',
   panelLayout: (localStorage.getItem('scienceflow.panelLayout') as PanelLayout) || 'intelligence-left',
   fontSize: (localStorage.getItem('scienceflow.fontSize') as FontSize) || 'default',
+  agentMapBackground: (localStorage.getItem('scienceflow.agentMapBackground') as AgentMapBackground) || 'default',
   language: (localStorage.getItem('scienceflow.language') as Lang) || 'en-US',
 
   setTheme: (theme) => {
@@ -184,6 +203,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     document.documentElement.dataset.fontSize = size;
     set({ fontSize: size });
   },
+  setAgentMapBackground: (background) => {
+    localStorage.setItem('scienceflow.agentMapBackground', background);
+    document.documentElement.dataset.agentMapBackground = background;
+    set({ agentMapBackground: background });
+  },
   setLanguage: (lang) => {
     localStorage.setItem('scienceflow.language', lang);
     set({ language: lang });
@@ -192,7 +216,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // View
   currentView: 'l0',
   frontTab: 'agent-map',
-  l1Tab: 'board',
+  l1Tab: 'workspace',
   setView: (view) => set({ currentView: view }),
   setFrontTab: (tab) => set({ frontTab: tab }),
   setL1Tab: (tab) => set({ l1Tab: tab }),
@@ -374,28 +398,104 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearLogEntries: () => set({ logEntries: [] }),
 
   // Reports (recursively scan task_root for .md files)
-  reportList: [] as { path: string; filename: string; relative_path: string; title: string; created_at: string }[],
+  reportList: [] as ReportListItem[],
   selectedReportPath: '',
   reportContent: '',
   fetchReports: async () => {
     try {
-      const state = get();
-      const result = await api.fetchReports(undefined, state.chatSessionId || undefined);
-      const list = result.reports || [];
+      const gatewayState = useGatewayStore.getState();
+      if (gatewayState.token) await gatewayState.fetchSessionList();
+      const { token, sessionList } = useGatewayStore.getState();
+
+      if (!token) {
+        const result = await api.fetchReports().catch(() => ({ reports: [] }));
+        const list = (result.reports || []).map((report) => ({
+          ...report,
+          report_key: `api::${report.path}`,
+          source: 'api' as const,
+        }));
+        set({ reportList: list });
+        const selected = list.find((report) => report.report_key === get().selectedReportPath) || list[0];
+        if (selected) {
+          set({ selectedReportPath: selected.report_key });
+          const c = await api.fetchReportContent(selected.path);
+          set({ reportContent: c.content || '' });
+        } else {
+          set({ selectedReportPath: '', reportContent: '' });
+        }
+        return;
+      }
+
+      const sessions = sessionList.map((session) => ({
+        session_id: session.session_id,
+        task_root: session.agent?.task?.workspace || '',
+        mode: '',
+        created_at: '',
+        message_count: 0,
+        last_message_at: session.last_active || '',
+      } as ChatSession));
+      set({ sessions });
+
+      const results = await Promise.all(sessionList.map(async (session, index) => {
+        try {
+          const files = await gatewayFetchFiles(token, session.session_id);
+          const label = `Session ${index + 1}: ${session.session_id.slice(0, 8)}`;
+          return (files.tree || [])
+            .filter((file) => file.type === 'file' && file.path.toLowerCase().endsWith('.md'))
+            .map((file) => {
+              const filename = file.name || file.path.split('/').pop() || file.path;
+              const createdAt = file.mtime ? new Date(file.mtime > 1e12 ? file.mtime : file.mtime * 1000).toISOString() : '';
+              return {
+                path: file.path,
+                filename,
+                relative_path: file.path,
+                title: filename.replace(/\.md$/i, ''),
+                created_at: createdAt,
+                session_id: session.session_id,
+                session_label: label,
+                task_root: files.root || session.agent?.task?.workspace || '',
+                report_key: `${session.session_id}::${file.path}`,
+                source: 'gateway' as const,
+              };
+            });
+        } catch {
+          return [] as ReportListItem[];
+        }
+      }));
+
+      const list = results.flat().filter((report, index, all) =>
+        all.findIndex((item) => item.report_key === report.report_key) === index
+      ).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
       set({ reportList: list });
-      if (list.length > 0 && !get().selectedReportPath) {
-        const latest = list[0];
-        set({ selectedReportPath: latest.path });
-        const c = await api.fetchReportContent(latest.path, undefined, state.chatSessionId || undefined);
-        set({ reportContent: c.content || '' });
+
+      const selected = list.find((report) => report.report_key === get().selectedReportPath) || list[0];
+      if (selected) {
+        set({ selectedReportPath: selected.report_key });
+        if (selected.source === 'gateway' && selected.session_id) {
+          const blob = await workspaceDownloadFile(token, selected.session_id, selected.path);
+          set({ reportContent: await blob.text() });
+        } else {
+          const c = await api.fetchReportContent(selected.path, selected.task_root || undefined, selected.session_id || undefined);
+          set({ reportContent: c.content || '' });
+        }
+      } else {
+        set({ selectedReportPath: '', reportContent: '' });
       }
     } catch { /* silent */ }
   },
   fetchReportContent: async (path) => {
     try {
-      const state = get();
-      const c = await api.fetchReportContent(path, undefined, state.chatSessionId || undefined);
-      set({ reportContent: c.content || '', selectedReportPath: path });
+      const selected = get().reportList.find((report) => report.report_key === path || report.path === path);
+      if (!selected) return;
+      if (selected.source === 'gateway' && selected.session_id) {
+        const { token } = useGatewayStore.getState();
+        if (!token) return;
+        const blob = await workspaceDownloadFile(token, selected.session_id, selected.path);
+        set({ reportContent: await blob.text(), selectedReportPath: selected.report_key });
+        return;
+      }
+      const c = await api.fetchReportContent(selected.path, selected.task_root || undefined, selected.session_id || undefined);
+      set({ reportContent: c.content || '', selectedReportPath: selected.report_key });
     } catch { /* silent */ }
   },
   clearReportState: () => set({ reportList: [], selectedReportPath: '', reportContent: '' }),

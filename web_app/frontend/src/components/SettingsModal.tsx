@@ -5,8 +5,8 @@ import * as api from '../api/client';
 
 export function SettingsModal() {
   const {
-    theme, fontSize, panelLayout,
-    setTheme, setFontSize, setPanelLayout,
+    theme, fontSize, panelLayout, agentMapBackground,
+    setTheme, setFontSize, setPanelLayout, setAgentMapBackground,
     runtimeSettings, settingsPanelOpen, setSettingsPanelOpen,
     fetchHealth, fetchSettings,
   } = useAppStore();
@@ -89,6 +89,17 @@ export function SettingsModal() {
                 <option value="small">{t.settingsModal.small}</option>
                 <option value="default">{t.settingsModal.default}</option>
                 <option value="large">{t.settingsModal.large}</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>{t.settingsModal.backgroundImage}</label>
+              <select
+                data-settings-background-image
+                value={agentMapBackground}
+                onChange={(e) => setAgentMapBackground(e.target.value as typeof agentMapBackground)}
+              >
+                <option value="default">{t.settingsModal.agentMapBackground}</option>
+                <option value="lab">{t.settingsModal.labBackground}</option>
               </select>
             </div>
             <div className="field settings-panel-layout-field">

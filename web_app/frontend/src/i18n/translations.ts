@@ -187,6 +187,9 @@ export interface Translations {
     dark: string;
     paperLight: string;
     textSize: string;
+    backgroundImage: string;
+    agentMapBackground: string;
+    labBackground: string;
     small: string;
     default: string;
     large: string;
@@ -417,6 +420,9 @@ export const zhCN: Translations = {
     dark: '深色',
     paperLight: '纸张白',
     textSize: '文字大小',
+    backgroundImage: '背景图片',
+    agentMapBackground: '默认Agent地图',
+    labBackground: '实验室背景',
     small: '小',
     default: '默认',
     large: '大',
@@ -647,6 +653,9 @@ export const enUS: Translations = {
     dark: 'Dark',
     paperLight: 'Paper Light',
     textSize: 'Text size',
+    backgroundImage: 'Background image',
+    agentMapBackground: 'Default Agent Map',
+    labBackground: 'Lab Background',
     small: 'Small',
     default: 'Default',
     large: 'Large',

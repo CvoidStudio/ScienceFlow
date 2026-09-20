@@ -8,6 +8,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { CsvViewer } from './CsvViewer';
 import { AgentLineageView } from './AgentLineageView';
+import { ReportViewer } from './ReportViewer';
 import clsx from 'clsx';
 import { Copy, Check, Download, Upload, FolderUp } from 'lucide-react';
 import { metricText, shortenId, valueOrDash } from '../utils/helpers';
@@ -24,8 +25,13 @@ export function L1Workspace() {
     currentState, l1Scope, l1Tab, setL1Tab,
     setView, setFrontTab, setL1Scope, setBatchPanelCollapsed,
     selectedNodeIndex, selectNode,
+    reportList, selectedReportPath, reportContent, fetchReports, fetchReportContent,
   } = useAppStore();
   const t = useT();
+
+  useEffect(() => {
+    if (l1Tab === 'key-report') fetchReports();
+  }, [l1Tab, fetchReports]);
 
   const state = currentState;
   const nodes = state?.nodes || [];
@@ -36,6 +42,18 @@ export function L1Workspace() {
     : t.l1Workspace.taskScope;
 
   const tabGroup = 'l1';
+  const selectedReport = reportList.find((report) => report.report_key === selectedReportPath || report.path === selectedReportPath);
+
+  const downloadSelectedReport = () => {
+    if (!selectedReport || !reportContent) return;
+    const blob = new Blob([reportContent], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = selectedReport.filename || 'key-report.md';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const goBackToAgentMap = () => {
     setView('l0');
@@ -57,10 +75,11 @@ export function L1Workspace() {
               >
                 &larr; {t.l1Workspace.backToAgentMap}
               </button>
-              <div className="seg" data-tab-group={tabGroup}>
-                <button className={clsx(l1Tab === 'optimization' && 'active')} data-tab-target="optimization" onClick={() => setL1Tab('optimization')}>Lineage</button>
-                <button className={clsx(l1Tab === 'workspace' && 'active')} data-tab-target="workspace" onClick={() => setL1Tab('workspace')}>{t.l1Workspace.workspace}</button>
-                <button className={clsx(l1Tab === 'logs' && 'active')} data-tab-target="logs" onClick={() => setL1Tab('logs')}>{t.l1Workspace.logs}</button>
+              <div className="seg" data-tab-group={tabGroup} role="tablist">
+                <button className={clsx(l1Tab === 'workspace' && 'active')} data-tab-target="workspace" role="tab" aria-selected={l1Tab === 'workspace'} onClick={() => setL1Tab('workspace')}>{t.l1Workspace.workspace}</button>
+                <button className={clsx(l1Tab === 'key-report' && 'active')} data-tab-target="key-report" role="tab" aria-selected={l1Tab === 'key-report'} onClick={() => setL1Tab('key-report')}>{t.reportViewer.keyReport}</button>
+                <button className={clsx(l1Tab === 'optimization' && 'active')} data-tab-target="optimization" role="tab" aria-selected={l1Tab === 'optimization'} onClick={() => setL1Tab('optimization')}>Lineage</button>
+                <button className={clsx(l1Tab === 'logs' && 'active')} data-tab-target="logs" role="tab" aria-selected={l1Tab === 'logs'} onClick={() => setL1Tab('logs')}>{t.l1Workspace.logs}</button>
               </div>
             </div>
             <span className="card-subtitle" data-l1-scope-label>{scopeLabel}</span>
@@ -68,6 +87,39 @@ export function L1Workspace() {
           <div className="card-body">
             <div className={clsx('tab-panel workspace-panel', l1Tab === 'workspace' && 'active')} data-tab-panel="l1:workspace">
               <WorkspaceBrowserView />
+            </div>
+            <div className={clsx('tab-panel l1-key-report-panel', l1Tab === 'key-report' && 'active')} data-tab-panel="l1:key-report">
+              <div className="doc-frame">
+                <div className="doc-toolbar">
+                  <div className="doc-toolbar-actions">
+                    <button className="doc-action" type="button" onClick={downloadSelectedReport} disabled={!selectedReport || !reportContent}>Download</button>
+                    <button className="doc-action" type="button" onClick={() => window.print()}>{t.reportViewer.pdf}</button>
+                  </div>
+                  <div className="report-picker">
+                    <span className="doc-toolbar-title">{reportList.length} reports</span>
+                    <select
+                      className="report-select"
+                      aria-label="Select Key Report"
+                      value={selectedReportPath}
+                      onChange={(e) => fetchReportContent(e.target.value)}
+                      disabled={reportList.length === 0}
+                    >
+                      {reportList.length > 0 ? reportList.map((r) => (
+                        <option key={r.report_key} value={r.report_key}>
+                          {[r.session_label, r.relative_path || r.title || r.filename].filter(Boolean).join(' / ')}
+                        </option>
+                      )) : (
+                        <option value="">No reports</option>
+                      )}
+                    </select>
+                  </div>
+                </div>
+                <div className="doc-scroll">
+                  <article className="doc-page">
+                    <ReportViewer key={selectedReportPath || 'key-report'} />
+                  </article>
+                </div>
+              </div>
             </div>
             <div className={clsx('tab-panel optimization-panel', l1Tab === 'optimization' && 'active')} data-tab-panel="l1:optimization">
               <AgentLineageView />

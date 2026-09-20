@@ -11,7 +11,7 @@ interface TopbarProps {
 
 export function Topbar({ authUser, onLogout }: TopbarProps) {
   const {
-    currentState, batchPanelCollapsed,
+    currentState, currentView, batchPanelCollapsed,
     setSettingsPanelOpen,
     language, setLanguage,
     setView, setFrontTab, setBatchPanelCollapsed,
@@ -19,6 +19,7 @@ export function Topbar({ authUser, onLogout }: TopbarProps) {
   const t = useT();
 
   const runCount = currentState?.runs?.length || 0;
+  const showBatchToggle = currentView !== 'l0' && currentView !== 'l1';
 
   const toggleLang = () => {
     const next: Lang = language === 'en-US' ? 'zh-CN' : 'en-US';
@@ -60,10 +61,12 @@ export function Topbar({ authUser, onLogout }: TopbarProps) {
         <div className="top-context-strip">
           <span className="top-context-item status">{t.topbar.status}</span>
         </div>
-        <button className="btn top-batch-toggle" type="button" onClick={() => setBatchPanelCollapsed(!batchPanelCollapsed)}>
-          <span>{t.topbar.batch}</span>
-          <span className="batch-rail-count">{runCount}</span>
-        </button>
+        {showBatchToggle && (
+          <button className="btn top-batch-toggle" type="button" onClick={() => setBatchPanelCollapsed(!batchPanelCollapsed)}>
+            <span>{t.topbar.batch}</span>
+            <span className="batch-rail-count">{runCount}</span>
+          </button>
+        )}
         {onLogout && (
           <button className="btn topbar-logout" type="button" onClick={onLogout} title={t.topbar.logout} aria-label={t.topbar.logout}>
             <LogOut size={16} />

@@ -428,10 +428,11 @@ export interface FileTreeNode {
 
 export type View = 'l0' | 'l1';
 export type FrontTab = 'agent-map' | 'key-report';
-export type L1Tab = 'board' | 'optimization' | 'workspace' | 'logs';
+export type L1Tab = 'board' | 'optimization' | 'workspace' | 'key-report' | 'logs';
 export type Theme = 'scienceflow-dark' | 'paper-light';
 export type PanelLayout = 'intelligence-left' | 'chat-left';
 export type FontSize = 'small' | 'default' | 'large';
+export type AgentMapBackground = 'default' | 'lab';
 export type L1Scope = 'task' | 'node';
 export type ChatRunState = 'idle' | 'running' | 'finalizing' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 export type ChatRouteMode = 'chat' | 'agent';

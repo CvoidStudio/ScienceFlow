@@ -948,6 +948,13 @@
       height: 100%;
     }
 
+    .agent-map-stage-only > picture {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
     .agent-map-photo {
       object-fit: cover;
       object-position: center;
@@ -2029,5 +2036,9 @@
     .lineage-node,
     .lineage-node-body {
       min-width: 0;
+    }
+    
+    .terminal-log {
+      width: fit-content;
     }
 

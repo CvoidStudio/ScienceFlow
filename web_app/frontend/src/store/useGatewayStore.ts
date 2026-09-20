@@ -92,7 +92,13 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
       const login = await gatewayLogin(userName, password);
       const sources = await gatewayListSources(login.token);
       const allNames = sources.map((s) => s.name);
-      const session = await gatewayCreateSession(login.token, allNames);
+      const listed = await gatewayListSessions(login.token);
+      const existing = (listed.sessions || [])
+        .filter((item) => item.session_id)
+        .sort((a, b) => (b.last_active || '').localeCompare(a.last_active || ''))[0];
+      const session = existing
+        ? await gatewayActivateSession(login.token, existing.session_id)
+        : await gatewayCreateSession(login.token, allNames);
       gatewayStartStream(session.session_id);
       set({
         status: 'connecting',
@@ -101,6 +107,7 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
         sources,
         subscribedSources: session.sources || allNames,
         sessionId: session.session_id,
+        sessionList: existing ? listed.sessions || [] : [session],
         lastError: '',
       });
     } catch (e) {

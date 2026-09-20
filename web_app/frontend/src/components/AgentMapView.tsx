@@ -18,11 +18,14 @@ export function AgentMapView() {
   const {
     currentState, chatBusy, chatRunState, chatQueueDepth,
     chatRouteMode, chatProgressLabel, chatWarmup,
-    toolEvents, selectedAgentWorkerId, selectAgentMapWorker,
-    setView, setL1Tab, setL1Scope, setAgentMapReportOpen,
-    setFrontTab, agentPositionId,
+    toolEvents,
+    setView, setL1Tab, setL1Scope,
+    agentPositionId, agentMapBackground,
   } = useAppStore();
   const t = useT();
+  const backgroundSrc = agentMapBackground === 'lab'
+    ? './assets/agent-map-lab-bg.png'
+    : './assets/agent-map-bg.png';
 
   const model = useMemo(() => {
     return buildAgentMapModel(currentState, {
@@ -45,18 +48,23 @@ export function AgentMapView() {
 
   return (
     <div className="agent-map-stage-only">
-      <img
-        className="agent-map-photo"
-        src="./assets/agent-map-bg.png"
-        alt={t.agentMap.imgAlt}
-      />
+      <picture>
+        {agentMapBackground === 'lab' && (
+          <source media="(max-width: 768px)" srcSet="./assets/agent-map-lab-bg-mobile.png" />
+        )}
+        <img
+          className="agent-map-photo"
+          src={backgroundSrc}
+          alt={t.agentMap.imgAlt}
+        />
+      </picture>
       <AgentMapOverlay model={model} />
       <AgentMapActorLayer model={model} />
       <button
         className="agent-map-hotspot agent-map-hotspot-board"
         type="button"
         aria-label={t.agentMap.openBoardAria}
-        onClick={() => { setL1Scope('task'); setL1Tab('board'); setView('l1'); }}
+        onClick={() => { setL1Scope('task'); setL1Tab('workspace'); setView('l1'); }}
       >
         <span>{t.agentMap.openBoard}</span>
       </button>
@@ -64,7 +72,7 @@ export function AgentMapView() {
         className="agent-map-hotspot agent-map-hotspot-report"
         type="button"
         aria-label={t.agentMap.keyReportAria}
-        onClick={() => { setAgentMapReportOpen(true); setFrontTab('key-report'); }}
+        onClick={() => { setL1Scope('task'); setL1Tab('key-report'); setView('l1'); }}
       >
         <span>{t.agentMap.keyReport}</span>
       </button>

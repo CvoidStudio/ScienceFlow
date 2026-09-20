@@ -160,11 +160,14 @@ export default function App() {
             .getPropertyValue('--chat-rail-w')
             .trim(),
         ) || 380;
-      resizer.setPointerCapture(e.pointerId);
+      document.body.classList.add('rail-resizing');
+      try {
+        resizer.setPointerCapture(e.pointerId);
+      } catch { /* silent */ }
 
       const onPointerMove = (ev: PointerEvent) => {
         const dx = startX - ev.clientX;
-        const newWidth = Math.max(300, Math.min(600, startWidth + dx));
+        const newWidth = Math.max(380, Math.min(720, startWidth + dx));
         document.documentElement.style.setProperty('--chat-rail-w', `${newWidth}px`);
         try {
           localStorage.setItem(LS_RAIL_KEY, String(newWidth));
@@ -172,17 +175,18 @@ export default function App() {
       };
 
       const onPointerUp = () => {
-        resizer.removeEventListener('pointermove', onPointerMove);
-        resizer.removeEventListener('pointerup', onPointerUp);
+        document.body.classList.remove('rail-resizing');
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
       };
 
-      resizer.addEventListener('pointermove', onPointerMove);
-      resizer.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp, { once: true });
     };
 
     resizer.addEventListener('pointerdown', onPointerDown);
     return () => resizer.removeEventListener('pointerdown', onPointerDown);
-  }, []);
+  }, [authStatus]);
 
   const state = currentState;
   const summary = state?.summary;
@@ -237,20 +241,23 @@ export default function App() {
         <div
           className={clsx(
             'workspace-frame',
+            (currentView === 'l0' || currentView === 'l1') && 'batch-hidden',
             batchPanelCollapsed ? 'batch-collapsed' : 'batch-open',
             chatLeft && 'chat-left',
           )}
         >
-          <BatchPanel
-            collapsed={batchPanelCollapsed}
-            runCount={runCount}
-            subtitle={subtitle}
-            runs={runs}
-            selectedRunIndex={selectedRunIndex}
-            onToggle={() => setBatchPanelCollapsed(!batchPanelCollapsed)}
-            onSelectRun={handleSelectRun}
-            onDoubleClick={handleDoubleClickRun}
-          />
+          {currentView !== 'l1' && (
+            <BatchPanel
+              collapsed={batchPanelCollapsed}
+              runCount={runCount}
+              subtitle={subtitle}
+              runs={runs}
+              selectedRunIndex={selectedRunIndex}
+              onToggle={() => setBatchPanelCollapsed(!batchPanelCollapsed)}
+              onSelectRun={handleSelectRun}
+              onDoubleClick={handleDoubleClickRun}
+            />
+          )}
 
           <div className="workspace-main">
             {/* L0 Page */}
@@ -389,6 +396,7 @@ export default function App() {
             className="rail-resizer"
             id="railResizer"
             role="separator"
+            aria-orientation="vertical"
           />
 
           <ChatRail />

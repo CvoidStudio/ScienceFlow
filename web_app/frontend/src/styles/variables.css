@@ -36,9 +36,9 @@
       --edge: 10px;
       --gap: 10px;
       --topbar-h: 60px;
-      --chat-rail-w: clamp(420px, 28vw, 520px);
-      --chat-rail-min: 340px;
-      --chat-rail-max: 864px;
+      --chat-rail-w: clamp(480px, 31vw, 600px);
+      --chat-rail-min: 380px;
+      --chat-rail-max: 720px;
       --batch-col-w: clamp(300px, 24vw, 390px);
       --batch-rail-w: 34px;
       --visual-viewport-height: 100dvh;
