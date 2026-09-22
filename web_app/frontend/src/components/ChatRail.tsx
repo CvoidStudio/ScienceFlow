@@ -51,7 +51,7 @@ export function ChatRail() {
     toolEvents, streamingAssistantMessages,
     activeMessageId, clearTimeline,
   } = useAppStore();
-  const { sessionList, fetchSessionList, switchSession, sessionId: gwSessionId } = useGatewayStore();
+  const { sessionList, fetchSessionList, switchSession, createSession, sessionId: gwSessionId } = useGatewayStore();
   const t = useT();
 
   const [input, setInput] = useState('');
@@ -67,13 +67,17 @@ export function ChatRail() {
   const [switchBusy, setSwitchBusy] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Sticky-bottom: only auto-scroll while the user is already near the bottom.
+  const chatStickRef = useRef(true);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
   const taskId = currentState?.task?.task_id || '';
   const datasetName = currentState?.task?.dataset_name || '';
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!chatStickRef.current) return;
+    const container = messagesEndRef.current?.closest('.rail-messages');
+    if (container) container.scrollTop = container.scrollHeight;
   }, [chatMessages, toolEvents, streamingAssistantMessages]);
 
   useEffect(() => {
@@ -93,10 +97,16 @@ export function ChatRail() {
       debug.log("ChatRail", "handleSend blocked: !text=", !text, "chatBusy=", chatBusy, "chatSendInFlight=", chatSendInFlight);
       return;
     }
-    // chatSessionId is the gateway session id (set after gateway connect).
-    if (!chatSessionId) {
-      debug.log("ChatRail", "no gateway session, cannot invoke agent");
-      return;
+    let targetSessionId = chatSessionId;
+    if (!targetSessionId) {
+      const session = await createSession();
+      if (!session) {
+        debug.log("ChatRail", "failed to create gateway session");
+        return;
+      }
+      targetSessionId = session.session_id;
+      useAppStore.getState().setChatSessionId(targetSessionId);
+      debug.log("ChatRail", "created gateway session before invoke", targetSessionId);
     }
     setInput('');
 
@@ -109,14 +119,17 @@ export function ChatRail() {
       content: text,
       created_at: new Date().toISOString(),
       route: chatRouteMode,
+      // Anchor: everything in the agent log before this point belongs to the
+      // previous run, so its reasoning blocks render above this message.
+      userWfStart: useGatewayStore.getState().parsedLog.segments.length,
     };
     addChatMessage(userMsg);
 
     useAppStore.setState({ chatSendInFlight: true, chatBusy: true, chatRunState: 'running' });
     try {
-      debug.log("ChatRail", "invoking agent on gateway session", chatSessionId, "mode=", taskMode);
+      debug.log("ChatRail", "invoking agent on gateway session", targetSessionId, "mode=", taskMode);
       const { token } = useGatewayStore.getState();
-      const task = await gatewayInvokeAgent(token, chatSessionId, text, taskMode);
+      const task = await gatewayInvokeAgent(token, targetSessionId, text, taskMode);
       debug.log("ChatRail", "invoke response:", task);
       addChatMessage({
         message_id: `task-${task.id}`,
@@ -185,6 +198,7 @@ export function ChatRail() {
     try {
       const session = await switchSession(sessionId);
       if (session) {
+        useAppStore.getState().setChatMessages([]);
         useAppStore.getState().setChatSessionId(sessionId);
         useAppStore.getState().clearTimeline();
         setSessionsPanelOpen(false);
@@ -312,14 +326,57 @@ export function ChatRail() {
 
         <div className="agent-cockpit" data-agent-cockpit>
           <section className="agent-cockpit-panel agent-cockpit-transcript" data-agent-transcript>
-            <div className="messages rail-messages" id="frontMessages">
-              {/* User & platform messages */}
-              {chatMessages.map((msg) => (
-                <ChatMessageItem key={msg.message_id} message={msg} />
-              ))}
-
-              {/* Agent workflow blocks from parsed gateway log */}
-              <AgentWorkflowBlocks />
+            <div className="messages rail-messages" id="frontMessages" onScroll={(e) => {
+              const el = e.currentTarget;
+              chatStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+            }}>
+              {/* 按时间顺序交错渲染：每轮问答后紧跟该轮的解析过程，
+                  下一轮提问出现在上一轮解析过程之后。 */}
+              {(() => {
+                // 按轮次分组渲染，每轮顺序固定为：
+                // 用户提问 → 答复/系统消息 → 解析块（reasoning）→ 手动终止标记。
+                const runs: {
+                  user?: ChatMessage;
+                  msgs: ChatMessage[];
+                  stops: ChatMessage[];
+                  startAnchor?: number;
+                }[] = [];
+                for (const msg of chatMessages) {
+                  if (msg.role === 'user') {
+                    runs.push({ user: msg, msgs: [], stops: [], startAnchor: msg.userWfStart });
+                  } else {
+                    if (runs.length === 0) runs.push({ msgs: [], stops: [] });
+                    const run = runs[runs.length - 1];
+                    if (msg.message_id.startsWith('history-stop-')) run.stops.push(msg);
+                    else run.msgs.push(msg);
+                  }
+                }
+                const items: React.ReactNode[] = [];
+                runs.forEach((run, i) => {
+                  if (run.user) {
+                    items.push(<ChatMessageItem key={run.user.message_id} message={run.user} />);
+                  }
+                  for (const m of run.msgs) {
+                    items.push(<ChatMessageItem key={m.message_id} message={m} />);
+                  }
+                  const start = run.startAnchor ?? 0;
+                  if (i < runs.length - 1) {
+                    const end = runs[i + 1].startAnchor;
+                    if (end != null && end > start) {
+                      items.push(
+                        <AgentWorkflowBlocks key={`wf-hist-${i}`} startIndex={start} endIndex={end} historical />,
+                      );
+                    }
+                  } else {
+                    // 最后一个运行块实时渲染（也覆盖已结束的最后一轮）。
+                    items.push(<AgentWorkflowBlocks key="wf-live" startIndex={start} />);
+                  }
+                  for (const s of run.stops) {
+                    items.push(<ChatMessageItem key={s.message_id} message={s} />);
+                  }
+                });
+                return items;
+              })()}
 
               {chatBusy && chatMessages.length === 0 && (
                 <div className="agent-thinking">
@@ -451,9 +508,10 @@ function formatLastActive(rfc3339: string): string {
   }
 }
 
-function AgentWorkflowBlocks() {
+function AgentWorkflowBlocks({ startIndex = 0, endIndex, historical = false }: { startIndex?: number; endIndex?: number; historical?: boolean }) {
   const { parsedLog, status, user, lines } = useGatewayStore();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef(true);
 
   const headers = parsedLog.headers;
   const task = getHeader(headers, 'Task');
@@ -461,15 +519,19 @@ function AgentWorkflowBlocks() {
   const finalStatus = getHeader(headers, 'Final Status');
   const taskId = getHeader(headers, 'Task ID');
 
+  const allSegments = parsedLog.segments;
+  const segments = allSegments.slice(startIndex, endIndex);
+
   useEffect(() => {
-    if (scrollRef.current) {
+    if (scrollRef.current && stickRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [parsedLog]);
 
-  const hasContent = parsedLog.segments.length > 0 || lines.length > 0;
+  const hasContent = segments.length > 0 || (!historical && lines.length > 0);
 
   if (!hasContent) {
+    if (historical) return null;
     return (
       <div className="dim" style={{ display: 'grid', placeItems: 'center', textAlign: 'center', padding: '20px 0' }}>
         <div>
@@ -482,10 +544,10 @@ function AgentWorkflowBlocks() {
     );
   }
 
-  return (
-    <div className="agent-workflow-blocks" ref={scrollRef}>
+  const body = (
+    <>
       {/* Header summary strip */}
-      {(task || query) && (
+      {!historical && (task || query) && (
         <div className="agent-wf-header-strip">
           <div className="agent-wf-header-pills">
             {task && <span className="pill cyan" style={{ fontSize: 10 }}>{task}</span>}
@@ -503,18 +565,31 @@ function AgentWorkflowBlocks() {
         </div>
       )}
 
-      {parsedLog.segments.map((seg, i) => (
-        <CollapsibleBlock key={i} segment={seg} />
+      {segments.map((seg, i) => (
+        <CollapsibleBlock key={startIndex + i} segment={seg} />
       ))}
 
-      {/* Final summary */}
-      {parsedLog.summary && (
+      {/* Final summary (live block only — historical answers already show it) */}
+      {!historical && !endIndex && parsedLog.summary && (
         <div className="agent-wf-summary">
           <div className="chat-markdown" style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{parsedLog.summary}</ReactMarkdown>
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (historical) {
+    return segments.length > 0 ? <div className="agent-workflow-blocks historical">{body}</div> : null;
+  }
+
+  return (
+    <div className="agent-workflow-blocks" ref={scrollRef} onScroll={(e) => {
+      const el = e.currentTarget;
+      stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    }}>
+      {body}
     </div>
   );
 }
@@ -639,6 +714,15 @@ function ChatMessageItem({ message }: { message: ChatMessage }) {
 
   const streamContent = streamingAssistantMessages.get(message.message_id);
   const displayContent = message.content || streamContent || '';
+
+  // 手动终止标记：单独一行居中小字，不作为普通消息气泡渲染。
+  if (message.message_id.startsWith('history-stop-')) {
+    return (
+      <div className="dim" style={{ fontSize: 11, textAlign: 'center', padding: '2px 0', letterSpacing: 0.3 }}>
+        {message.content}
+      </div>
+    );
+  }
 
   return (
     <div className={clsx('message', message.role)}>

@@ -67,11 +67,14 @@
       border-color: rgba(169, 74, 62, .25);
     }
 
-    html[data-theme="paper-light"] .chat-action-button[data-action-state="stop"],
+    html[data-theme="paper-light"] .chat-action-button[data-action-state="stop"] {
+      color: #d64541;
+      background: transparent;
+      border-color: rgba(169, 74, 62, .40);
+    }
+
     html[data-theme="paper-light"] .chat-action-button[data-action-state="stop"]:hover {
-      color: #8f382d;
-      background: rgba(169, 74, 62, .10);
-      border-color: rgba(169, 74, 62, .30);
+      background: rgba(169, 74, 62, .08);
     }
 
     html[data-theme="paper-light"] .btn.danger,
@@ -2888,3 +2891,22 @@
       }
     }
 
+    /* ── Monitor card: fixed left label width sized to the longest English label ── */
+    .donut-row .kv-row {
+      grid-template-columns: 17ch minmax(0, 1fr);
+    }
+
+    .donut-row .kv-row span:first-child {
+      white-space: nowrap;
+    }
+
+
+/* Stage model names (coder/feedback) shown next to the main model in the settings model list */
+.model-stage-suffix {
+  font-size: 10px;
+  opacity: 0.65;
+  margin-left: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

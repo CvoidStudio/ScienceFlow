@@ -29,7 +29,7 @@ export function ReportViewer() {
   const report = currentState?.report;
   const content = reportContent || report?.content || getDefaultReport();
   const timestamp = report?.updated_at || currentState?.generated_at || '';
-  const selectedItem = reportList.find((r) => r.path === selectedReportPath);
+  const selectedItem = reportList.find((r) => r.report_key === selectedReportPath || r.path === selectedReportPath);
   const selectedTitle = selectedItem?.title || report?.title || t.reportViewer.keyReport;
 
   return (

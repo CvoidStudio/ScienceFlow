@@ -17,6 +17,10 @@ type Event struct {
 	Mode      string `json:"mode,omitempty"`     // line | raw | prefix
 	Timestamp string `json:"timestamp"`
 	Offset    int64  `json:"offset"`
+	// Session identifies the owning agent session for per-session agent logs
+	// (.../task_logs/<user>/<session>/RAW.log). Empty for static sources.
+	// Session-scoped SSE consumers filter on this to avoid cross-session leaks.
+	Session string `json:"session,omitempty"`
 }
 
 func (e Event) Marshal() []byte {

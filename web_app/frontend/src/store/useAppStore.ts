@@ -405,18 +405,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
   clearLogEntries: () => set({ logEntries: [] }),
 
-  // Reports (recursively scan task_root for .md files)
+  // Reports (current session workspace Markdown files)
   reportList: [] as ReportListItem[],
   selectedReportPath: '',
   reportContent: '',
   fetchReports: async () => {
     try {
       const gatewayState = useGatewayStore.getState();
-      if (gatewayState.token) await gatewayState.fetchSessionList();
-      const { token, sessionList } = useGatewayStore.getState();
+      const { token } = gatewayState;
+      const currentSessionId = gatewayState.sessionId || get().chatSessionId;
 
-      if (!token) {
-        const result = await api.fetchReports().catch(() => ({ reports: [] }));
+      if (!token || !currentSessionId) {
+        const result = await api.fetchReports(get().activeTaskRoot() || undefined, get().chatSessionId || undefined).catch(() => ({ reports: [] }));
         const list = (result.reports || []).map((report) => ({
           ...report,
           report_key: `api::${report.path}`,
@@ -426,7 +426,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         const selected = list.find((report) => report.report_key === get().selectedReportPath) || list[0];
         if (selected) {
           set({ selectedReportPath: selected.report_key });
-          const c = await api.fetchReportContent(selected.path);
+          const c = await api.fetchReportContent(selected.path, get().activeTaskRoot() || undefined, get().chatSessionId || undefined);
           set({ reportContent: c.content || '' });
         } else {
           set({ selectedReportPath: '', reportContent: '' });
@@ -434,62 +434,41 @@ export const useAppStore = create<AppState>((set, get) => ({
         return;
       }
 
-      const sessions = sessionList.map((session) => ({
-        session_id: session.session_id,
-        task_root: session.agent?.task?.workspace || '',
-        mode: '',
-        created_at: '',
-        message_count: 0,
-        last_message_at: session.last_active || '',
-      } as ChatSession));
-      set({ sessions });
+      // List every Markdown file in the current session's workspace as its own
+      // report entry; the dropdown shows the plain filename with extension.
+      const files = await gatewayFetchFiles(token, currentSessionId);
+      const mdFiles = (files.tree || [])
+        .filter((file) => file.type === 'file' && file.path.toLowerCase().endsWith('.md'))
+        .sort((a, b) => a.path.localeCompare(b.path));
 
-      const results = await Promise.all(sessionList.map(async (session, index) => {
-        try {
-          const files = await gatewayFetchFiles(token, session.session_id);
-          const label = `Session ${index + 1}: ${session.session_id.slice(0, 8)}`;
-          return (files.tree || [])
-            .filter((file) => file.type === 'file' && file.path.toLowerCase().endsWith('.md'))
-            .map((file) => {
-              const filename = file.name || file.path.split('/').pop() || file.path;
-              const createdAt = file.mtime ? new Date(file.mtime > 1e12 ? file.mtime : file.mtime * 1000).toISOString() : '';
-              return {
-                path: file.path,
-                filename,
-                relative_path: file.path,
-                title: filename.replace(/\.md$/i, ''),
-                created_at: createdAt,
-                session_id: session.session_id,
-                session_label: label,
-                task_root: files.root || session.agent?.task?.workspace || '',
-                report_key: `${session.session_id}::${file.path}`,
-                source: 'gateway' as const,
-              };
-            });
-        } catch {
-          return [] as ReportListItem[];
-        }
-      }));
-
-      const list = results.flat().filter((report, index, all) =>
-        all.findIndex((item) => item.report_key === report.report_key) === index
-      ).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-      set({ reportList: list });
+      const list: ReportListItem[] = mdFiles.map((file) => {
+        const filename = file.path.split('/').pop() || file.path;
+        return {
+          path: file.path,
+          filename,
+          relative_path: file.path,
+          title: filename,
+          created_at: '',
+          session_id: currentSessionId,
+          session_label: '',
+          task_root: files.root || '',
+          report_key: `gw::md::${file.path}`,
+          source: 'gateway' as const,
+        };
+      });
 
       const selected = list.find((report) => report.report_key === get().selectedReportPath) || list[0];
-      if (selected) {
-        set({ selectedReportPath: selected.report_key });
-        if (selected.source === 'gateway' && selected.session_id) {
-          const blob = await workspaceDownloadFile(token, selected.session_id, selected.path);
-          set({ reportContent: await blob.text() });
-        } else {
-          const c = await api.fetchReportContent(selected.path, selected.task_root || undefined, selected.session_id || undefined);
-          set({ reportContent: c.content || '' });
-        }
-      } else {
-        set({ selectedReportPath: '', reportContent: '' });
+      if (!selected) {
+        set({ reportList: [], selectedReportPath: '', reportContent: '' });
+        return;
       }
-    } catch { /* silent */ }
+
+      set({ reportList: list, selectedReportPath: selected.report_key });
+      const content = await downloadGatewayFileText(token, currentSessionId, selected.path);
+      set({ reportContent: content });
+    } catch (e) {
+      console.error('[KeyReport] fetchReports failed:', e);
+    }
   },
   fetchReportContent: async (path) => {
     try {
@@ -498,13 +477,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (selected.source === 'gateway' && selected.session_id) {
         const { token } = useGatewayStore.getState();
         if (!token) return;
-        const blob = await workspaceDownloadFile(token, selected.session_id, selected.path);
-        set({ reportContent: await blob.text(), selectedReportPath: selected.report_key });
+        const content = await downloadGatewayFileText(token, selected.session_id, selected.path);
+        set({ reportContent: content, selectedReportPath: selected.report_key });
         return;
       }
       const c = await api.fetchReportContent(selected.path, selected.task_root || undefined, selected.session_id || undefined);
       set({ reportContent: c.content || '', selectedReportPath: selected.report_key });
-    } catch { /* silent */ }
+    } catch (e) {
+      console.error('[KeyReport] fetchReportContent failed:', e);
+    }
   },
   clearReportState: () => set({ reportList: [], selectedReportPath: '', reportContent: '' }),
 
@@ -566,6 +547,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     return nodes[get().selectedNodeIndex] || null;
   },
 }));
+
+// Download a single workspace file from the gateway session and return its text.
+async function downloadGatewayFileText(token: string, sessionId: string, path: string): Promise<string> {
+  const blob = await workspaceDownloadFile(token, sessionId, path);
+  return blob.text();
+}
 
 function _deepSet(obj: Record<string, unknown>, path: string, value: unknown) {
   const keys = path.split('.');

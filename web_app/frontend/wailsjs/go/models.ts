@@ -198,6 +198,78 @@ export namespace main {
 	        this.sources = source["sources"];
 	    }
 	}
+	export class GatewayModelCreateRequest {
+	    model_name: string;
+	    api_key: string;
+	    api_url: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GatewayModelCreateRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.model_name = source["model_name"];
+	        this.api_key = source["api_key"];
+	        this.api_url = source["api_url"];
+	    }
+	}
+	export class GatewayModelInfo {
+	    id: string;
+	    model_name: string;
+	    api_key: string;
+	    api_key_masked: string;
+	    api_url: string;
+	    is_active: boolean;
+	    created_at?: string;
+	    updated_at?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GatewayModelInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.model_name = source["model_name"];
+	        this.api_key = source["api_key"];
+	        this.api_key_masked = source["api_key_masked"];
+	        this.api_url = source["api_url"];
+	        this.is_active = source["is_active"];
+	        this.created_at = source["created_at"];
+	        this.updated_at = source["updated_at"];
+	    }
+	}
+	export class GatewayModelStages {
+	    coder_model_id: string;
+	    feedback_model_id: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GatewayModelStages(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.coder_model_id = source["coder_model_id"];
+	        this.feedback_model_id = source["feedback_model_id"];
+	    }
+	}
+	export class GatewayModelUpdateRequest {
+	    model_name: string;
+	    api_key: string;
+	    api_url: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GatewayModelUpdateRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.model_name = source["model_name"];
+	        this.api_key = source["api_key"];
+	        this.api_url = source["api_url"];
+	    }
+	}
 	export class GatewayMonitorRuntime {
 	    status: string;
 	    elapsed: string;
@@ -523,6 +595,32 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class SystemStats {
+	    cpu_percent: number;
+	    memory_used_bytes: number;
+	    memory_total_bytes: number;
+	    memory_percent: number;
+	    disk_used_bytes: number;
+	    disk_total_bytes: number;
+	    disk_percent: number;
+	    disk_path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SystemStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.cpu_percent = source["cpu_percent"];
+	        this.memory_used_bytes = source["memory_used_bytes"];
+	        this.memory_total_bytes = source["memory_total_bytes"];
+	        this.memory_percent = source["memory_percent"];
+	        this.disk_used_bytes = source["disk_used_bytes"];
+	        this.disk_total_bytes = source["disk_total_bytes"];
+	        this.disk_percent = source["disk_percent"];
+	        this.disk_path = source["disk_path"];
+	    }
 	}
 	
 	export class UploadResult {

@@ -82,6 +82,226 @@
       gap: 10px;
     }
 
+    .settings-model-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      align-items: end;
+      gap: 10px;
+    }
+
+    .settings-model-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .settings-model-tools {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .settings-model-tools .icon-btn {
+      width: 28px;
+      min-width: 28px;
+      height: 28px;
+      min-height: 28px;
+    }
+
+    .settings-model-tools .icon-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .model-actions {
+      display: flex;
+      align-items: end;
+      gap: 6px;
+      padding-bottom: 1px;
+    }
+
+    .model-actions .btn {
+      min-width: 72px;
+      height: 34px;
+      white-space: nowrap;
+    }
+
+    .model-manager-body {
+      display: grid;
+      gap: 12px;
+      overflow: auto;
+    }
+
+    .model-manager-toolbar {
+      display: flex;
+      justify-content: flex-start;
+    }
+
+    .model-manager-toolbar .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .model-manager-table {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      background: rgba(255, 255, 255, .025);
+    }
+
+    .model-manager-head,
+    .model-manager-row {
+      display: grid;
+      grid-template-columns: minmax(0, .7fr) minmax(0, 1.5fr) 58px;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .model-manager-head {
+      min-height: 36px;
+      padding: 0 10px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, .045);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .model-provider-group {
+      overflow: visible;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .model-manager-row {
+      min-height: 44px;
+      padding: 5px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, .06);
+      color: var(--soft);
+      font-family: var(--mono);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .model-manager-row:last-child {
+      border-bottom: 0;
+    }
+
+    .model-name-cell,
+    .model-operation-cell {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .model-provider-cell {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--muted);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .model-cube-icon {
+      color: var(--cyan);
+      font-size: 16px;
+    }
+
+    .model-operation-cell {
+      justify-content: flex-end;
+      gap: 2px;
+    }
+
+    .model-operation-cell .icon-btn {
+      width: 24px;
+      min-width: 24px;
+      height: 24px;
+      min-height: 24px;
+    }
+
+    .model-operation-cell .icon-btn svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .ghost-icon {
+      border-color: transparent;
+      background: transparent;
+      color: var(--muted);
+    }
+
+    .ghost-icon:hover {
+      color: var(--cyan);
+      border-color: var(--line);
+      background: rgba(255, 255, 255, .06);
+    }
+
+    .model-operation-cell .ghost-icon.danger {
+      color: var(--red);
+    }
+
+    .model-empty-row {
+      padding: 12px 10px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .add-model-scrim {
+      z-index: 1;
+    }
+
+    .add-model-dialog {
+      position: fixed;
+      top: 50%;
+      right: 14px;
+      z-index: 2;
+      width: min(520px, calc(100vw - 28px));
+      max-height: calc(100vh - 28px);
+      transform: translateY(-50%);
+    }
+
+    .model-manager-dialog {
+      width: min(520px, calc(100vw - 28px));
+    }
+
+    .model-form-scrim {
+      z-index: 3;
+    }
+
+    .model-form-dialog {
+      z-index: 4;
+    }
+
+    .add-model-head {
+      grid-template-columns: minmax(0, 1fr) 34px !important;
+    }
+
+    .add-model-head .icon-btn {
+      width: 34px !important;
+      min-width: 34px !important;
+      height: 30px;
+      padding: 0 !important;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .add-model-body {
+      overflow: visible;
+    }
+
+    .add-model-fields {
+      gap: 12px;
+    }
+
+    .required-star {
+      margin-left: 3px;
+      color: var(--red);
+    }
+
     .settings-hint {
       margin: 0;
       color: var(--muted);

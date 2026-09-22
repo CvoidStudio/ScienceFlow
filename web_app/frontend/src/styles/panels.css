@@ -292,6 +292,36 @@
       min-width: 0;
     }
 
+    .field:has(> select) {
+      position: relative;
+    }
+
+    .field:has(> select)::after {
+      content: "";
+      position: absolute;
+      right: 14px;
+      bottom: 14px;
+      width: 5px;
+      height: 5px;
+      border-right: 1.4px solid var(--muted);
+      border-bottom: 1.4px solid var(--muted);
+      transform: rotate(45deg) translateY(-1px);
+      transform-origin: center;
+      pointer-events: none;
+      transition: transform .16s ease, border-color .16s ease;
+    }
+
+    .field:has(> select:open)::after {
+      border-color: var(--cyan);
+      transform: rotate(225deg) translate(-1px, -1px);
+    }
+
+    .field select {
+      appearance: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+    }
+
     .field label {
       display: block;
       color: var(--muted);

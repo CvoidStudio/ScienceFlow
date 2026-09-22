@@ -15,9 +15,17 @@ import {
   GatewayStopAgent,
   GatewayFetchFiles,
   GatewayFetchMonitor,
+  GatewayListModels,
+  GatewayCreateModel,
+  GatewayActivateModel,
+  GatewayGetModelStages,
+  GatewaySetModelStages,
+  GatewayUpdateModel,
+  GatewayDeleteModel,
   WorkspaceDownload,
   WorkspaceUploadFiles,
   SetGatewayURL,
+  GetSystemStats,
 } from '../../wailsjs/go/main/App';
 import { main as wailsModels } from '../../wailsjs/go/models';
 import type { FileTreeResponse, FileNode } from '../types';
@@ -76,6 +84,7 @@ export interface GatewaySnapshot {
 }
 
 export interface GatewayLogEvent {
+  session_id?: string;
   input: string;
   file: string;
   path: string;
@@ -93,6 +102,7 @@ export interface GatewayStatusEvent {
 }
 
 export interface GatewayBackfillEvent {
+  session_id?: string;
   source: string;
   path: string;
   size: number;
@@ -102,6 +112,7 @@ export interface GatewayBackfillEvent {
 }
 
 export interface GatewayBackfillDoneEvent {
+  session_id?: string;
   count: number;
 }
 
@@ -174,9 +185,82 @@ export function gatewayFetchFiles(token: string, sessionId: string): Promise<Fil
 }
 
 export type GatewayMonitorMetrics = wailsModels.GatewayMonitorMetrics;
+export type GatewayModelInfo = wailsModels.GatewayModelInfo;
+
+export function gatewayListModels(token: string): Promise<GatewayModelInfo[]> {
+  return GatewayListModels(token) as Promise<GatewayModelInfo[]>;
+}
+
+export function gatewayCreateModel(
+  token: string,
+  req: { model_name: string; api_key: string; api_url: string },
+): Promise<GatewayModelInfo> {
+  return GatewayCreateModel(token, req as wailsModels.GatewayModelCreateRequest) as Promise<GatewayModelInfo>;
+}
+
+export function gatewayUpdateModel(
+  token: string,
+  modelId: string,
+  req: { model_name: string; api_key: string; api_url: string },
+): Promise<GatewayModelInfo> {
+  return GatewayUpdateModel(token, modelId, req as wailsModels.GatewayModelUpdateRequest) as Promise<GatewayModelInfo>;
+}
+
+export function gatewayDeleteModel(token: string, modelId: string): Promise<void> {
+  return GatewayDeleteModel(token, modelId);
+}
+
+export function gatewayActivateModel(token: string, modelId: string, sessionId: string): Promise<GatewayModelInfo> {
+  return GatewayActivateModel(token, modelId, sessionId) as Promise<GatewayModelInfo>;
+}
+
+// Stage model selection ("coder" / "feedbacker"), resolved per session.
+// An empty id means the stage follows the session's main model.
+export interface GatewayModelStages {
+  coder_model_id: string;
+  feedback_model_id: string;
+}
+
+export function gatewayGetModelStages(token: string, sessionId: string): Promise<GatewayModelStages> {
+  return GatewayGetModelStages(token, sessionId) as Promise<GatewayModelStages>;
+}
+
+export function gatewaySetModelStages(
+  token: string,
+  sessionId: string,
+  coderModelId: string,
+  feedbackModelId: string,
+): Promise<GatewayModelStages> {
+  return GatewaySetModelStages(token, sessionId, coderModelId, feedbackModelId) as Promise<GatewayModelStages>;
+}
 
 export function gatewayFetchMonitor(token: string, sessionId: string): Promise<GatewayMonitorMetrics> {
   return GatewayFetchMonitor(token, sessionId) as Promise<GatewayMonitorMetrics>;
+}
+
+// SystemStats mirrors the desktop app's local-machine resource snapshot
+// (CPU load, memory and disk usage of the machine running ScienceFlow).
+export interface SystemStats {
+  cpu_percent: number;
+  memory_used_bytes: number;
+  memory_total_bytes: number;
+  memory_percent: number;
+  disk_used_bytes: number;
+  disk_total_bytes: number;
+  disk_percent: number;
+  disk_path: string;
+}
+
+// getSystemStats fetches local-machine stats via the Wails bridge. Returns
+// null when the bridge is unavailable (e.g. plain vite dev in a browser).
+export async function getSystemStats(): Promise<SystemStats | null> {
+  const bridge = (window as any)?.go?.main?.App?.GetSystemStats;
+  if (typeof bridge !== 'function') return null;
+  try {
+    return (await GetSystemStats()) as SystemStats;
+  } catch {
+    return null;
+  }
 }
 
 export type { FileNode };

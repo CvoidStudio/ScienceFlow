@@ -3,6 +3,7 @@ package tailer
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"io"
 	"log"
 	"os"
@@ -93,12 +94,23 @@ func (t *Tailer) WatchFile(path, name string, poll time.Duration) {
 		return
 	}
 	abs = filepath.ToSlash(abs)
+	// Capture the file size NOW — at registration time. The harvester attaches
+	// asynchronously (next scan tick), so any bytes written in between must be
+	// tailed too; without this baseline they would be skipped silently.
+	var startOffset int64
+	if fi, err := os.Stat(abs); err == nil && !fi.IsDir() {
+		startOffset = fi.Size()
+	}
 	in := config.InputConfig{
 		Name:         name,
 		Path:         abs,
 		Mode:         "line",
 		TailFiles:    true,
 		PollInterval: config.Duration{Duration: poll},
+		// A brand-new file (or a task that wants its full transcript) starts
+		// from the registration baseline; existing content stays un-tailed.
+		StartOffset:    startOffset,
+		HasStartOffset: true,
 	}
 	t.mu.Lock()
 	if tmr, ok := t.pendingUn[abs]; ok {
@@ -454,7 +466,7 @@ func (h *harvester) runRaw() {
 			continue
 		}
 		switch {
-		case err == io.EOF:
+		case isEofLike(err):
 			h.reg.SetOffset(h.path, h.offset)
 			if h.reopenIfRotated() {
 				continue
@@ -510,7 +522,7 @@ func (h *harvester) runLines() {
 		}
 
 		switch {
-		case err == io.EOF:
+		case isEofLike(err):
 			h.reg.SetOffset(h.path, h.checkpoint())
 
 			if h.ml != nil && h.mlTimeout > 0 && time.Since(lastActivity) > h.mlTimeout {
@@ -537,6 +549,18 @@ func (h *harvester) runLines() {
 	}
 }
 
+// isEofLike reports whether a read error should be handled exactly like EOF:
+// checkpoint and keep polling. Bind-mounted Windows directories (9p/DrvFS, as
+// used by the Docker dev container) return ENODATA ("no data available")
+// instead of io.EOF when reading at the end of a file; treating that as fatal
+// killed the harvester permanently and froze the live stream.
+func isEofLike(err error) bool {
+	if errors.Is(err, io.EOF) {
+		return true
+	}
+	return strings.Contains(err.Error(), "no data available")
+}
+
 func (h *harvester) open() error {
 	fi, err := os.Stat(h.path)
 	if err != nil {
@@ -546,12 +570,22 @@ func (h *harvester) open() error {
 	start := h.reg.State(h.path)
 	offset := start.Offset
 
-	if !start.Seen {
+	switch {
+	case h.input.HasStartOffset:
+		// Dynamically watched file: resume exactly from the registration
+		// baseline (bytes between registration and attach must stream too).
+		// Falls back to 0 when the file shrank (truncated/rotated in place).
+		offset = h.input.StartOffset
+		if offset > fi.Size() {
+			offset = 0
+		}
+		h.logger.Printf("harvesting new file %s (mode=%s, offset=%d)", h.path, h.mode, offset)
+	case !start.Seen:
 		h.logger.Printf("harvesting new file %s (mode=%s)", h.path, h.mode)
 		if h.input.TailFiles {
 			offset = fi.Size()
 		}
-	} else if offset > fi.Size() {
+	case offset > fi.Size():
 		h.logger.Printf("file %s shrank while stopped, restarting from beginning", h.path)
 		offset = 0
 	}
@@ -642,6 +676,7 @@ func (h *harvester) publish(msg string, offset int64) {
 		Mode:      h.mode,
 		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 		Offset:    offset,
+		Session:   sessionFromAgentLogPath(h.path),
 	})
 }
 
@@ -659,5 +694,16 @@ func (h *harvester) publishRaw(chunk []byte, offset int64) {
 		Mode:      h.mode,
 		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 		Offset:    offset,
+		Session:   sessionFromAgentLogPath(h.path),
 	})
+}
+
+// sessionFromAgentLogPath extracts the session id from a per-session agent log
+// path (.../task_logs/<user>/<session>/RAW.log), or "" for other files.
+func sessionFromAgentLogPath(path string) string {
+	parts := strings.Split(filepath.ToSlash(path), "/")
+	if len(parts) >= 3 && parts[len(parts)-1] == "RAW.log" {
+		return parts[len(parts)-2]
+	}
+	return ""
 }

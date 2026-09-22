@@ -10,7 +10,7 @@ import { CsvViewer } from './CsvViewer';
 import { AgentLineageView } from './AgentLineageView';
 import { ReportViewer } from './ReportViewer';
 import clsx from 'clsx';
-import { Copy, Check, Download, Upload, FolderUp } from 'lucide-react';
+import { Copy, Check, Download, Printer, Upload, FolderUp } from 'lucide-react';
 import { metricText, shortenId, valueOrDash } from '../utils/helpers';
 import * as api from '../api/client';
 import {
@@ -19,7 +19,9 @@ import {
   workspaceUploadFiles,
   gatewayFetchFiles,
   gatewayFetchMonitor,
+  getSystemStats,
   type GatewayMonitorMetrics,
+  type SystemStats,
 } from '../api/gateway';
 import type { NodeInfo, PerformanceSample, FileTreeNode } from '../types';
 
@@ -71,15 +73,8 @@ export function L1Workspace() {
         <div className="card workspace-card">
           <div className="card-head l1-card-head">
             <div className="l1-head-left">
-              <button
-                className="btn l1-back-btn"
-                type="button"
-                title={t.l1Workspace.backToAgentMap}
-                onClick={goBackToAgentMap}
-              >
-                &larr; {t.l1Workspace.backToAgentMap}
-              </button>
               <div className="seg" data-tab-group={tabGroup} role="tablist">
+                <button type="button" title={t.l1Workspace.backToAgentMap} onClick={goBackToAgentMap}>Agent Map</button>
                 <button className={clsx(l1Tab === 'workspace' && 'active')} data-tab-target="workspace" role="tab" aria-selected={l1Tab === 'workspace'} onClick={() => setL1Tab('workspace')}>{t.l1Workspace.workspace}</button>
                 <button className={clsx(l1Tab === 'key-report' && 'active')} data-tab-target="key-report" role="tab" aria-selected={l1Tab === 'key-report'} onClick={() => setL1Tab('key-report')}>{t.reportViewer.keyReport}</button>
                 <button className={clsx(l1Tab === 'optimization' && 'active')} data-tab-target="optimization" role="tab" aria-selected={l1Tab === 'optimization'} onClick={() => setL1Tab('optimization')}>{t.l1Workspace.lineage}</button>
@@ -95,12 +90,8 @@ export function L1Workspace() {
             <div className={clsx('tab-panel l1-key-report-panel', l1Tab === 'key-report' && 'active')} data-tab-panel="l1:key-report">
               <div className="doc-frame">
                 <div className="doc-toolbar">
-                  <div className="doc-toolbar-actions">
-                    <button className="doc-action" type="button" onClick={downloadSelectedReport} disabled={!selectedReport || !reportContent}>Download</button>
-                    <button className="doc-action" type="button" onClick={() => window.print()}>{t.reportViewer.pdf}</button>
-                  </div>
                   <div className="report-picker">
-                    <span className="doc-toolbar-title">{reportList.length} reports</span>
+                    {/* <span className="doc-toolbar-title">{reportList.length} reports</span> */}
                     <select
                       className="report-select"
                       aria-label="Select Key Report"
@@ -110,17 +101,40 @@ export function L1Workspace() {
                     >
                       {reportList.length > 0 ? reportList.map((r) => (
                         <option key={r.report_key} value={r.report_key}>
-                          {[r.session_label, r.relative_path || r.title || r.filename].filter(Boolean).join(' / ')}
+                          {r.filename || r.relative_path || r.title}
                         </option>
                       )) : (
                         <option value="">No reports</option>
                       )}
                     </select>
                   </div>
+                  <div className="doc-toolbar-actions">
+                    <button
+                      className="doc-action"
+                      type="button"
+                      onClick={downloadSelectedReport}
+                      disabled={!selectedReport || !reportContent}
+                      aria-label={t.reportViewer.download}
+                      title={t.reportViewer.download}
+                    >
+                      <Download size={14} />
+                    </button>
+                    <button
+                      className="doc-action"
+                      type="button"
+                      onClick={() => window.print()}
+                      aria-label={t.reportViewer.pdf}
+                      title={t.reportViewer.pdf}
+                    >
+                      <Printer size={14} />
+                    </button>
+                  </div>
                 </div>
                 <div className="doc-scroll">
                   <article className="doc-page">
-                    <ReportViewer key={selectedReportPath || 'key-report'} />
+                    {/* 不加 key：selectedReportPath 变化时若重挂载，挂载 effect 里的
+                        clearReportState 会清掉刚加载的报告并触发无限循环。 */}
+                    <ReportViewer />
                   </article>
                 </div>
               </div>
@@ -409,9 +423,24 @@ function L1MonitorView() {
   const t = useT();
   const monitor = currentState?.monitor;
   const [gatewayMonitor, setGatewayMonitor] = useState<GatewayMonitorMetrics | null>(null);
+  const [sysStats, setSysStats] = useState<SystemStats | null>(null);
   const [monitorLoading, setMonitorLoading] = useState(false);
   const prevRef = useRef<Record<string, unknown>>({});
   const [changedKeys, setChangedKeys] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchStats = async () => {
+      const stats = await getSystemStats();
+      if (!cancelled && stats) setSysStats(stats);
+    };
+    fetchStats();
+    const timer = window.setInterval(fetchStats, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     if (!token || !sessionId) {
@@ -503,12 +532,19 @@ function L1MonitorView() {
 
   const cpuPct = Math.round(resources?.cpu_percent ?? resources?.cpu ?? 0);
   const memoryPct = Math.round(resources?.memory_percent ?? resources?.memory ?? 0);
-  const memoryValue = resources?.memory_used_gb ? `${resources.memory_used_gb.toFixed(1)} GB` : (memoryPct ? `${memoryPct}%` : t.common.dash);
-  const storageValue = resources?.storage_display || (resources?.disk ? `${resources.disk} GB` : t.common.dash);
+  const sysCpu = sysStats ? Math.round(sysStats.cpu_percent) : null;
+  const sysMemory = sysStats ? formatMonitorBytes(sysStats.memory_used_bytes) : null;
+  const sysStorage = sysStats ? formatMonitorBytes(sysStats.disk_total_bytes) : null;
+  const cpuValue = sysCpu !== null ? `${sysCpu}%` : `${cpuPct}%`;
+  const taskMemory = resources?.memory_used_gb ? `${resources.memory_used_gb.toFixed(1)} GB` : (memoryPct ? `${memoryPct}%` : t.common.dash);
+  const memoryValue = sysMemory ?? taskMemory;
+  const taskStorage = resources?.storage_display || (resources?.disk ? `${resources.disk} GB` : t.common.dash);
+  const storageValue = sysStorage ?? taskStorage;
+  const donutPct = sysCpu ?? cpuPct;
   const effectiveMonitorData = effectiveMonitor as any;
   const tokensTotal = effectiveMonitorData?.tokens?.total ?? 0;
   const tokensValue = tokensTotal > 0 ? tokensTotal.toLocaleString() : t.l1Workspace.reserved;
-  const sourceLabel = effectiveMonitorData?.sources?.length ? effectiveMonitorData.sources.join(' · ') : 'monitor_state.json';
+  const sourceLabel = effectiveMonitorData?.sources?.length ? effectiveMonitorData.sources.join(' · ') : t.common.dash;
   const runtimeStatus = runtime?.status || t.common.idle;
 
   const costTotal = cost?.total || 0;
@@ -589,11 +625,11 @@ function L1MonitorView() {
         <div className="viz-card">
           <div className="section-title">{t.l1Workspace.costAndLatency}</div>
           <div className="donut-row">
-            <div className="donut" style={{'--dp': `${cpuPct}%`} as React.CSSProperties}>{cpuPct}%</div>
+            <div className="donut" style={{'--dp': `${donutPct}%`} as React.CSSProperties}>{donutPct}%</div>
             <div className="kv">
-              <div className={clsx('kv-row', changedKeys.has('cpu') && 'value-changed')}><span>{t.l1Workspace.cpu}</span><span title={`${cpuPct}%`}>{cpuPct}%</span></div>
-              <div className={clsx('kv-row', changedKeys.has('memory') && 'value-changed')}><span>{t.l1Workspace.memory}</span><span title={memoryValue}>{memoryValue}</span></div>
-              <div className={clsx('kv-row', changedKeys.has('disk') && 'value-changed')}><span>{t.l1Workspace.storage}</span><span title={storageValue}>{storageValue}</span></div>
+              <div className={clsx('kv-row', changedKeys.has('cpu') && 'value-changed')}><span>{t.l1Workspace.cpu}</span><span>{cpuValue}</span></div>
+              <div className={clsx('kv-row', changedKeys.has('memory') && 'value-changed')}><span>{t.l1Workspace.memory}</span><span>{memoryValue}</span></div>
+              <div className={clsx('kv-row', changedKeys.has('disk') && 'value-changed')}><span>{t.l1Workspace.storage}</span><span>{storageValue}</span></div>
               <div className={clsx('kv-row', changedKeys.has('cost') && 'value-changed')}><span>{t.l1Workspace.cost}</span><span title={`$${costTotal.toFixed(2)}`}>${costTotal.toFixed(2)}</span></div>
               <div className={clsx('kv-row', changedKeys.has('tokens') && 'value-changed')}><span>{t.l1Workspace.tokensReserved}</span><span title={tokensValue}>{tokensValue}</span></div>
             </div>
@@ -1258,9 +1294,10 @@ function L1LogsView() {
   const { lines, status, sessionId, backfilling } = useGatewayStore();
   const { chatBusy } = useAppStore();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef(true);
 
   useEffect(() => {
-    if (scrollRef.current) {
+    if (scrollRef.current && stickRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [lines]);
@@ -1275,7 +1312,10 @@ function L1LogsView() {
           Replaying cached session logs…
         </div>
       )}
-      <div className="workspace-content log-live-content" ref={scrollRef}>
+      <div className="workspace-content log-live-content" ref={scrollRef} onScroll={(e) => {
+        const el = e.currentTarget;
+        stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+      }}>
         {logText ? (
           <pre className="terminal-log">{logText}</pre>
         ) : (

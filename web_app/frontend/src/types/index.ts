@@ -223,6 +223,9 @@ export interface ChatMessage {
   decision?: DecisionCard;
   route?: 'agent' | 'chat';
   idempotency_key?: string;
+  // Segment count of the gateway agent log at the moment this user message
+  // was sent; anchors where the previous run's reasoning blocks end.
+  userWfStart?: number;
 }
 
 export interface ChatToolEvent {
@@ -406,6 +409,7 @@ export interface FileTreeResponse {
 }
 
 export interface FileTreeEvent {
+  session_id?: string;
   kind: 'tree' | 'changes';
   root?: string;
   tree?: FileNode[];

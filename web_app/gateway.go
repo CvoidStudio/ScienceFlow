@@ -44,6 +44,37 @@ type GatewaySourceInfo struct {
 	Files []string `json:"files"`
 }
 
+type GatewayModelInfo struct {
+	ID           string `json:"id"`
+	ModelName    string `json:"model_name"`
+	APIKey       string `json:"api_key"`
+	APIKeyMasked string `json:"api_key_masked"`
+	APIURL       string `json:"api_url"`
+	Active       bool   `json:"is_active"`
+	CreatedAt    string `json:"created_at,omitempty"`
+	UpdatedAt    string `json:"updated_at,omitempty"`
+}
+
+type GatewayModelCreateRequest struct {
+	ModelName string `json:"model_name"`
+	APIKey    string `json:"api_key"`
+	APIURL    string `json:"api_url"`
+}
+
+type GatewayModelUpdateRequest struct {
+	ModelName string `json:"model_name"`
+	APIKey    string `json:"api_key"`
+	APIURL    string `json:"api_url"`
+}
+
+type GatewayModelsResponse struct {
+	Models []GatewayModelInfo `json:"models"`
+}
+
+type GatewayActivateModelResponse struct {
+	ActiveModel GatewayModelInfo `json:"active_model"`
+}
+
 // GatewaySession is the sessions* endpoint shape.
 type GatewaySession struct {
 	SessionID       string               `json:"session_id"`
@@ -81,6 +112,7 @@ type GatewaySnapshot struct {
 
 // GatewayLogEvent is the SSE "log" event data forwarded to the frontend.
 type GatewayLogEvent struct {
+	SessionID string `json:"session_id"`
 	Input     string `json:"input"`
 	File      string `json:"file"`
 	Path      string `json:"path"`
@@ -102,6 +134,7 @@ type GatewayStatusEvent struct {
 // GatewayBackfillEvent is the SSE "backfill" event: a snapshot of one source's
 // cached log content, sent on session switch before live tailing resumes.
 type GatewayBackfillEvent struct {
+	SessionID string `json:"session_id"`
 	Source    string `json:"source"`
 	Path      string `json:"path"`
 	Size      int64  `json:"size"`
@@ -112,10 +145,16 @@ type GatewayBackfillEvent struct {
 
 // GatewayBackfillDoneEvent is the SSE "backfill-done" marker.
 type GatewayBackfillDoneEvent struct {
-	Count int `json:"count"`
+	SessionID string `json:"session_id"`
+	Count     int    `json:"count"`
 }
 
 // ── Control-plane methods ──
+
+// gatewayHTTPClient bounds all control-plane requests so a hung gateway
+// cannot leave frontend promises pending forever (e.g. session list refresh
+// or agent stop would spin "Loading..." / "stopping" indefinitely).
+var gatewayHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 func (a *App) gatewayDo(method, path, token string, body any) (int, []byte, error) {
 	var rdr io.Reader
@@ -138,7 +177,7 @@ func (a *App) gatewayDo(method, path, token string, body any) (int, []byte, erro
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := (&http.Client{}).Do(req)
+	resp, err := gatewayHTTPClient.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -195,6 +234,122 @@ func (a *App) GatewayListSources(token string) ([]GatewaySourceInfo, error) {
 		return nil, err
 	}
 	return res.Sources, nil
+}
+
+func (a *App) GatewayListModels(token string) ([]GatewayModelInfo, error) {
+	status, raw, err := a.gatewayDo(http.MethodGet, "/models", token, nil)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, gatewayHTTPError(status, raw)
+	}
+	var res GatewayModelsResponse
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return nil, err
+	}
+	return res.Models, nil
+}
+
+func (a *App) GatewayCreateModel(token string, req GatewayModelCreateRequest) (GatewayModelInfo, error) {
+	status, raw, err := a.gatewayDo(http.MethodPost, "/models", token, req)
+	if err != nil {
+		return GatewayModelInfo{}, err
+	}
+	if status != http.StatusCreated {
+		return GatewayModelInfo{}, gatewayHTTPError(status, raw)
+	}
+	var res GatewayModelInfo
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return GatewayModelInfo{}, err
+	}
+	return res, nil
+}
+
+func (a *App) GatewayUpdateModel(token string, modelID string, req GatewayModelUpdateRequest) (GatewayModelInfo, error) {
+	status, raw, err := a.gatewayDo(http.MethodPut, "/models/"+url.PathEscape(modelID), token, req)
+	if err != nil {
+		return GatewayModelInfo{}, err
+	}
+	if status != http.StatusOK {
+		return GatewayModelInfo{}, gatewayHTTPError(status, raw)
+	}
+	var res GatewayModelInfo
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return GatewayModelInfo{}, err
+	}
+	return res, nil
+}
+
+func (a *App) GatewayDeleteModel(token string, modelID string) error {
+	status, raw, err := a.gatewayDo(http.MethodDelete, "/models/"+url.PathEscape(modelID), token, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent {
+		return gatewayHTTPError(status, raw)
+	}
+	return nil
+}
+
+func (a *App) GatewayActivateModel(token string, modelID string, sessionID string) (GatewayModelInfo, error) {
+	path := "/models/" + url.PathEscape(modelID) + "/activate"
+	if sessionID != "" {
+		path += "?session_id=" + url.QueryEscape(sessionID)
+	}
+	status, raw, err := a.gatewayDo(http.MethodPost, path, token, nil)
+	if err != nil {
+		return GatewayModelInfo{}, err
+	}
+	if status != http.StatusOK {
+		return GatewayModelInfo{}, gatewayHTTPError(status, raw)
+	}
+	var res GatewayActivateModelResponse
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return GatewayModelInfo{}, err
+	}
+	return res.ActiveModel, nil
+}
+
+type GatewayModelStages struct {
+	CoderModelID    string `json:"coder_model_id"`
+	FeedbackModelID string `json:"feedback_model_id"`
+}
+
+func (a *App) GatewayGetModelStages(token string, sessionID string) (GatewayModelStages, error) {
+	path := "/models/stages?session_id=" + url.QueryEscape(sessionID)
+	status, raw, err := a.gatewayDo(http.MethodGet, path, token, nil)
+	if err != nil {
+		return GatewayModelStages{}, err
+	}
+	if status != http.StatusOK {
+		return GatewayModelStages{}, gatewayHTTPError(status, raw)
+	}
+	var res GatewayModelStages
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return GatewayModelStages{}, err
+	}
+	return res, nil
+}
+
+func (a *App) GatewaySetModelStages(token string, sessionID string, coderModelID string, feedbackModelID string) (GatewayModelStages, error) {
+	body := map[string]string{
+		"session_id":        sessionID,
+		"coder_model_id":    coderModelID,
+		"feedback_model_id": feedbackModelID,
+	}
+	status, raw, err := a.gatewayDo(http.MethodPut, "/models/stages", token, body)
+	if err != nil {
+		return GatewayModelStages{}, err
+	}
+	if status != http.StatusOK {
+		return GatewayModelStages{}, gatewayHTTPError(status, raw)
+	}
+	var res GatewayModelStages
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return GatewayModelStages{}, err
+	}
+	return res, nil
 }
 
 // GatewayCreateSession creates a subscription session for the token's user.
@@ -326,17 +481,17 @@ type GatewayInvokeRequest struct {
 
 // GatewayTaskSnapshot mirrors the task object returned by the agent endpoints.
 type GatewayTaskSnapshot struct {
-	ID          string `json:"id"`
-	User        string `json:"user,omitempty"`
-	Session     string `json:"session,omitempty"`
-	Status      string `json:"status"`
-	Workspace   string `json:"workspace,omitempty"`
-	LogDir      string `json:"log_dir,omitempty"`
-	RawLogPath  string `json:"raw_log_path,omitempty"`
-	StartedAt   string `json:"started_at,omitempty"`
-	EndedAt     string `json:"ended_at,omitempty"`
-	ExitCode    *int   `json:"exit_code,omitempty"`
-	Error       string `json:"error,omitempty"`
+	ID         string `json:"id"`
+	User       string `json:"user,omitempty"`
+	Session    string `json:"session,omitempty"`
+	Status     string `json:"status"`
+	Workspace  string `json:"workspace,omitempty"`
+	LogDir     string `json:"log_dir,omitempty"`
+	RawLogPath string `json:"raw_log_path,omitempty"`
+	StartedAt  string `json:"started_at,omitempty"`
+	EndedAt    string `json:"ended_at,omitempty"`
+	ExitCode   *int   `json:"exit_code,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 // GatewayQueueStats mirrors the queue_stats field.
@@ -524,13 +679,13 @@ func (m *gatewayStreamManager) stream(ctx context.Context, baseURL, sessionID st
 				payload := strings.Join(dataLines, "\n")
 				switch eventName {
 				case "log":
-					m.handleLog(ctx, payload)
+					m.handleLog(ctx, payload, sessionID)
 				case "file":
-					m.handleFile(ctx, payload)
+					m.handleFile(ctx, payload, sessionID)
 				case "backfill":
-					m.handleBackfill(ctx, payload)
+					m.handleBackfill(ctx, payload, sessionID)
 				case "backfill-done":
-					m.handleBackfillDone(ctx, payload)
+					m.handleBackfillDone(ctx, payload, sessionID)
 				}
 			}
 			eventName, dataLines = "", nil
@@ -544,34 +699,38 @@ func (m *gatewayStreamManager) stream(ctx context.Context, baseURL, sessionID st
 	}
 }
 
-func (m *gatewayStreamManager) handleLog(ctx context.Context, payload string) {
+func (m *gatewayStreamManager) handleLog(ctx context.Context, payload string, sessionID string) {
 	var evt GatewayLogEvent
 	if err := json.Unmarshal([]byte(payload), &evt); err != nil {
 		return
 	}
+	evt.SessionID = sessionID
 	runtime.EventsEmit(ctx, "gateway-log", evt)
 }
 
-func (m *gatewayStreamManager) handleFile(ctx context.Context, payload string) {
+func (m *gatewayStreamManager) handleFile(ctx context.Context, payload string, sessionID string) {
 	var evt FileTreeEvent
 	if err := json.Unmarshal([]byte(payload), &evt); err != nil {
 		return
 	}
+	evt.SessionID = sessionID
 	runtime.EventsEmit(ctx, "gateway-file", evt)
 }
 
-func (m *gatewayStreamManager) handleBackfill(ctx context.Context, payload string) {
+func (m *gatewayStreamManager) handleBackfill(ctx context.Context, payload string, sessionID string) {
 	var evt GatewayBackfillEvent
 	if err := json.Unmarshal([]byte(payload), &evt); err != nil {
 		return
 	}
+	evt.SessionID = sessionID
 	runtime.EventsEmit(ctx, "gateway-backfill", evt)
 }
 
-func (m *gatewayStreamManager) handleBackfillDone(ctx context.Context, payload string) {
+func (m *gatewayStreamManager) handleBackfillDone(ctx context.Context, payload string, sessionID string) {
 	var evt GatewayBackfillDoneEvent
 	if err := json.Unmarshal([]byte(payload), &evt); err != nil {
 		return
 	}
+	evt.SessionID = sessionID
 	runtime.EventsEmit(ctx, "gateway-backfill-done", evt)
 }

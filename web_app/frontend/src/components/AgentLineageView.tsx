@@ -20,9 +20,10 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
 export function AgentLineageView() {
   const { parsedLog, status } = useGatewayStore();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef(true);
 
   useEffect(() => {
-    if (scrollRef.current) {
+    if (scrollRef.current && stickRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [parsedLog]);
@@ -60,7 +61,10 @@ export function AgentLineageView() {
       </div>
 
       {/* Step timeline */}
-      <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '14px' }}>
+      <div ref={scrollRef} onScroll={(e) => {
+        const el = e.currentTarget;
+        stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+      }} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '14px' }}>
         <div className="lineage-timeline" style={{ position: 'relative', paddingLeft: 24 }}>
           {/* Vertical line */}
           <div style={{

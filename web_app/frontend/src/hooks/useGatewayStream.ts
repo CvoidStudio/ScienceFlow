@@ -10,6 +10,7 @@ import {
   type GatewayBackfillEvent,
   type GatewayBackfillDoneEvent,
 } from '../api/gateway';
+import { parseHistoricalChatMessages } from '../utils/agentLogParser';
 
 // Bridges the gateway_server SSE stream (forwarded by the Go layer as Wails
 // events) into the gateway store. Mount once near the app root.
@@ -23,18 +24,95 @@ import {
 // "backfill-done" events before resuming live tailing.
 export function useGatewayStream() {
   useEffect(() => {
+    const isCurrentSessionEvent = (eventSessionId?: string) => {
+      const currentSessionId = useGatewayStore.getState().sessionId;
+      return !eventSessionId || !currentSessionId || eventSessionId === currentSessionId;
+    };
+
+    // Rebuild the chat message list from the gateway log (user queries +
+    // assistant answers, in log order) merged with optimistic local messages
+    // (just-typed input, task/error notices) that are not in the log yet.
+    let lastChatSyncAt = 0;
+    const syncChatMessages = (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastChatSyncAt < 400) return;
+      lastChatSyncAt = now;
+      const gw = useGatewayStore.getState();
+      // runStarts anchors each parsed user message to its run's first workflow
+      // segment, so reasoning blocks follow their answers even after a
+      // refresh/backfill rebuilds the whole list.
+      const parsed = parseHistoricalChatMessages(gw.rawBuffer, gw.parsedLog.runStarts || []);
+      // The backend embeds the route mode into the logged query
+      // ("[mode=lite] ..."); strip it so history matches what the user typed.
+      const stripMode = (s: string) => s.replace(/^\[mode=\S+\]\s*/, '');
+      const parsedUserContents = new Set(
+        parsed.filter((m) => m.role === 'user').map((m) => stripMode(m.content)),
+      );
+      for (const m of parsed) {
+        if (m.role === 'user') m.content = stripMode(m.content);
+      }
+      const optimistic = useAppStore
+        .getState()
+        .chatMessages.filter(
+          (m) =>
+            !m.message_id.startsWith('history-') &&
+            !(m.role === 'user' && parsedUserContents.has(m.content)),
+        );
+      // Carry the workflow anchor (segment count at send time) and the true
+      // local send timestamp from optimistic user messages onto their
+      // parsed-history counterparts, so interleaved reasoning blocks stay
+      // attached to the right run and locally-added messages (e.g. "Task
+      // started") sort below the question instead of above it.
+      const pendingMeta = new Map<string, { wfStart?: number; createdAt?: string }[]>();
+      for (const m of useAppStore.getState().chatMessages) {
+        if (m.role === 'user') {
+          const list = pendingMeta.get(m.content) || [];
+          list.push({ wfStart: m.userWfStart, createdAt: m.created_at });
+          pendingMeta.set(m.content, list);
+        }
+      }
+      for (const m of parsed) {
+        if (m.role !== 'user') continue;
+        const list = pendingMeta.get(m.content);
+        if (list && list.length > 0) {
+          const meta = list.shift()!;
+          if (meta.wfStart != null) (m as { userWfStart?: number }).userWfStart = meta.wfStart;
+          if (meta.createdAt) m.created_at = meta.createdAt;
+        }
+      }
+      // Sort by parsed epoch time, not string compare: created_at mixes UTC
+      // RFC3339Nano (log headers), local ISO (optimistic sends) and marker
+      // timestamps, and lexicographic order across those formats is unstable
+      // (a transiently mis-sorted "Task started" used to jump above the
+      // previous round's stop marker). NaN → 0 keeps unparsable entries first;
+      // Array.sort is stable so equal timestamps keep parse order.
+      const ts = (v?: string) => {
+        if (!v) return 0;
+        const t = Date.parse(v);
+        return Number.isNaN(t) ? 0 : t;
+      };
+      const merged = [...parsed, ...optimistic].sort((a, b) => ts(a.created_at) - ts(b.created_at));
+      useAppStore.getState().setChatMessages(merged);
+    };
+
     const offLog = EventsOn('gateway-log', (e: GatewayLogEvent) => {
+      if (!isCurrentSessionEvent(e.session_id)) return;
       const store = useGatewayStore.getState();
       const rawLine = e.message || '';
       store.appendLine(formatGatewayLogEvent(e), rawLine);
+      syncChatMessages();
     });
 
     const offBackfill = EventsOn('gateway-backfill', (e: GatewayBackfillEvent) => {
+      if (!isCurrentSessionEvent(e.session_id)) return;
       useGatewayStore.getState().appendBackfill(e.source, e.path, e.content || '', e.truncated);
     });
 
     const offBackfillDone = EventsOn('gateway-backfill-done', (e: GatewayBackfillDoneEvent) => {
-      useGatewayStore.getState().finishBackfill(e.count || 0);
+      if (!isCurrentSessionEvent(e.session_id)) return;
+      const gatewayStore = useGatewayStore.getState();
+      gatewayStore.finishBackfill(e.count || 0);
+      syncChatMessages(true);
     });
 
     const offStatus = EventsOn('gateway-status', (e: GatewayStatusEvent) => {
@@ -44,6 +122,9 @@ export function useGatewayStream() {
     const statusTimer = window.setInterval(async () => {
       const { token, sessionId } = useGatewayStore.getState();
       if (!token || !sessionId) return;
+      // While a stop request is in flight, don't let the poll overwrite the
+      // "cancelling" state (the backend may still report "running" briefly).
+      if (useAppStore.getState().chatRunState === 'cancelling') return;
       try {
         const status = await gatewayAgentStatus(token, sessionId);
         const app = useAppStore.getState();
@@ -51,15 +132,18 @@ export function useGatewayStream() {
         if (taskStatus === 'running' || taskStatus === 'queued') {
           app.setChatBusy(true);
           app.setChatRunState('running');
-        } else if (taskStatus === 'killed' || taskStatus === 'cancelled') {
-          app.setChatBusy(false);
-          app.setChatRunState('cancelled');
         } else if (taskStatus === 'done' || taskStatus === 'completed') {
           app.setChatBusy(false);
           app.setChatRunState('completed');
+          syncChatMessages(true);
         } else if (taskStatus === 'failed' || taskStatus === 'error' || taskStatus === 'idle') {
           app.setChatBusy(false);
           app.setChatRunState(taskStatus === 'idle' ? 'idle' : 'failed');
+          syncChatMessages(true);
+        } else if (taskStatus === 'killed' || taskStatus === 'cancelled') {
+          app.setChatBusy(false);
+          app.setChatRunState('cancelled');
+          syncChatMessages(true);
         }
       } catch {
         // The SSE stream remains the primary live status channel.

@@ -1268,24 +1268,28 @@ def _apply_env(cfg: Config) -> None:
         stage_base_urls = _split_env(endpoint_env["base_urls"])
         stage_base_url = os.environ.get(endpoint_env["base_url"], "").strip()
 
-        # keys: YAML stage config > stage-specific env > generic env
-        if not (stage.api_keys or stage.api_key):
-            if stage_api_keys:
-                stage.api_keys = stage_api_keys
-            elif stage_api_key:
-                stage.api_key = stage_api_key
-            elif api_keys:
+        # keys: stage-specific env > YAML stage config > generic env
+        if stage_api_keys:
+            stage.api_keys = stage_api_keys
+            stage.api_key = ""
+        elif stage_api_key:
+            stage.api_key = stage_api_key
+            stage.api_keys = []
+        elif not (stage.api_keys or stage.api_key):
+            if api_keys:
                 stage.api_keys = api_keys
             elif api_key:
                 stage.api_key = api_key
 
-        # urls: YAML stage config > stage-specific env > generic env
-        if not (stage.base_urls or stage.base_url):
-            if stage_base_urls:
-                stage.base_urls = stage_base_urls
-            elif stage_base_url:
-                stage.base_url = stage_base_url
-            elif base_urls:
+        # urls: stage-specific env > YAML stage config > generic env
+        if stage_base_urls:
+            stage.base_urls = stage_base_urls
+            stage.base_url = ""
+        elif stage_base_url:
+            stage.base_url = stage_base_url
+            stage.base_urls = []
+        elif not (stage.base_urls or stage.base_url):
+            if base_urls:
                 stage.base_urls = base_urls
             elif base_url:
                 stage.base_url = base_url

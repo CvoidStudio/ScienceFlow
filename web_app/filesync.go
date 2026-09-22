@@ -27,6 +27,7 @@ type FileTreeResponse struct {
 // FileTreeEvent is the SSE "file" event payload emitted by the gateway.
 // kind="tree" carries the full tree; kind="changes" carries deltas.
 type FileTreeEvent struct {
+	SessionID string         `json:"session_id"`
 	Kind      string         `json:"kind"`
 	Root      string         `json:"root,omitempty"`
 	Tree      []FileTreeNode `json:"tree,omitempty"`

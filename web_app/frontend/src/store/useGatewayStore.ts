@@ -20,6 +20,23 @@ export type GatewayStatus = 'idle' | 'connecting' | 'connected' | 'disconnected'
 
 const MAX_LINES = 2000;
 const MAX_RAW = 256 * 1024;
+const SWITCH_SESSION_TIMEOUT_MS = 10000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 interface GatewayState {
   status: GatewayStatus;
@@ -50,7 +67,10 @@ interface GatewayState {
   disconnect: () => Promise<void>;
   setSubscribedSources: (sources: string[]) => Promise<void>;
   fetchSessionList: () => Promise<void>;
+  prepareNewSession: () => void;
+  createSession: () => Promise<GatewaySession | null>;
   switchSession: (sessionId: string) => Promise<GatewaySession | null>;
+  deleteSession: (sessionId: string) => Promise<GatewaySession | null>;
   appendLine: (displayLine: string, rawLine?: string) => void;
   appendBackfill: (src: string, path: string, content: string, truncated: boolean) => void;
   finishBackfill: (count: number) => void;
@@ -62,6 +82,8 @@ interface GatewayState {
   refetchFileTree: () => Promise<void>;
   clearFileTree: () => void;
 }
+
+const EMPTY_PARSED_LOG: ParsedAgentLog = { headers: [], segments: [], toolCalls: [], reasoningBlocks: [], summary: '', raw: '', runStarts: [] };
 
 export const useGatewayStore = create<GatewayState>((set, get) => ({
   status: 'idle',
@@ -76,7 +98,7 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
   sessionList: [],
   lines: [],
   rawBuffer: '',
-  parsedLog: { headers: [], segments: [], toolCalls: [], reasoningBlocks: [], summary: '', raw: '' },
+  parsedLog: EMPTY_PARSED_LOG,
   backfilling: false,
   backfillCount: 0,
   fileTreeRoot: '',
@@ -85,7 +107,7 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
   fileTreeVersion: 0,
 
   connect: async (userName, password) => {
-    set({ status: 'connecting', lastError: '', userName, password, lines: [], rawBuffer: '', parsedLog: { headers: [], segments: [], toolCalls: [], reasoningBlocks: [], summary: '', raw: '' } });
+    set({ status: 'connecting', lastError: '', userName, password, lines: [], rawBuffer: '', parsedLog: EMPTY_PARSED_LOG });
     try {
       localStorage.setItem('scienceflow.gwUser', userName);
       localStorage.setItem('scienceflow.gwPass', password);
@@ -156,12 +178,82 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
     } catch { /* silent */ }
   },
 
+  prepareNewSession: () => {
+    gatewayStopStream();
+    set({
+      sessionId: '',
+      subscribedSources: [],
+      lines: [],
+      rawBuffer: '',
+      parsedLog: EMPTY_PARSED_LOG,
+      fileTreeRoot: '',
+      fileTree: [],
+      fileNestedTree: [],
+      fileTreeVersion: 0,
+      backfilling: false,
+      backfillCount: 0,
+    });
+  },
+
+  createSession: async () => {
+    const { token, sources } = get();
+    if (!token) return null;
+    try {
+      const session = await gatewayCreateSession(token, sources.map((s) => s.name));
+      gatewayStopStream();
+      gatewayStartStream(session.session_id);
+      set((state) => ({
+        sessionId: session.session_id,
+        subscribedSources: session.sources || sources.map((s) => s.name),
+        sessionList: [session, ...state.sessionList.filter((item) => item.session_id !== session.session_id)],
+        lines: [],
+        rawBuffer: '',
+        parsedLog: EMPTY_PARSED_LOG,
+        fileTreeRoot: '',
+        fileTree: [],
+        fileNestedTree: [],
+        fileTreeVersion: 0,
+        backfilling: false,
+        backfillCount: 0,
+      }));
+      return session;
+    } catch (e) {
+      set({ lastError: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
+  },
+
+  deleteSession: async (id) => {
+    const { token, sessionId: current, sessionList } = get();
+    if (!token || !id) return null;
+    try {
+      await gatewayDeleteSession(token, id);
+      const remaining = sessionList.filter((item) => item.session_id !== id);
+      set({ sessionList: remaining });
+      if (id === current) {
+        const next = remaining[0];
+        if (next) {
+          return await get().switchSession(next.session_id);
+        }
+        get().prepareNewSession();
+      }
+      return null;
+    } catch (e) {
+      set({ lastError: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
+  },
+
   switchSession: async (id) => {
     const { token, sessionId: current } = get();
     if (!token || !id) return null;
     if (id === current) return null;
     try {
-      const session = await gatewayActivateSession(token, id);
+      const session = await withTimeout(
+        gatewayActivateSession(token, id),
+        SWITCH_SESSION_TIMEOUT_MS,
+        'Session switch timed out',
+      );
       // Stop current stream, rebuild SSE for the new session.
       gatewayStopStream();
       gatewayStartStream(id);
@@ -170,7 +262,7 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
         subscribedSources: session.sources || [],
         lines: [],
         rawBuffer: '',
-        parsedLog: { headers: [], segments: [], toolCalls: [], reasoningBlocks: [], summary: '', raw: '' },
+        parsedLog: EMPTY_PARSED_LOG,
         fileTreeRoot: '',
         fileTree: [],
         fileNestedTree: [],
@@ -201,18 +293,25 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
 
   appendBackfill: (src: string, path: string, content: string, truncated: boolean) => {
     set((s) => {
+      // A backfill replay carries the session's full snapshot. If it arrives
+      // while the buffer already holds live-tailed content (e.g. after an SSE
+      // reconnect), reset first — otherwise everything would be duplicated.
+      const fresh = !s.backfilling;
+      const baseBuffer = fresh ? '' : s.rawBuffer;
+      const baseLines = fresh ? [] : s.lines;
       // Split the snapshotted content into display lines and raw feed.
       const header = `── ${src} · ${path}${truncated ? ' (truncated)' : ''} ──`;
       const contentLines = content ? content.split('\n') : [];
       const display = [header, ...contentLines];
-      const next = [...s.lines, ...display];
+      const next = [...baseLines, ...display];
       const trimmed = next.length > MAX_LINES ? next.slice(-MAX_LINES) : next;
-      const raw = s.rawBuffer.length === 0 ? content : s.rawBuffer + '\n' + content;
+      const raw = baseBuffer.length === 0 ? content : baseBuffer + '\n' + content;
       const trimmedRaw = raw.length > MAX_RAW ? raw.slice(-MAX_RAW) : raw;
       return {
         lines: trimmed,
         rawBuffer: trimmedRaw,
         parsedLog: parseAgentLog(trimmedRaw),
+        backfilling: true,
       };
     });
   },
@@ -221,7 +320,7 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
     set({ backfilling: false, backfillCount: count });
   },
 
-  clearLines: () => set({ lines: [], rawBuffer: '', parsedLog: { headers: [], segments: [], toolCalls: [], reasoningBlocks: [], summary: '', raw: '' }, backfilling: false, backfillCount: 0 }),
+  clearLines: () => set({ lines: [], rawBuffer: '', parsedLog: EMPTY_PARSED_LOG, backfilling: false, backfillCount: 0 }),
 
   setStatus: (status, error) => {
     set({ status, ...(error !== undefined ? { lastError: error } : {}) });

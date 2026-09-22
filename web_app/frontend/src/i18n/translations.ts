@@ -177,6 +177,7 @@ export interface Translations {
   reportViewer: {
     reportNav: string;
     keyReport: string;
+    download: string;
     pdf: string;
     scienceflow: string;
     defaultLead: string;
@@ -185,12 +186,17 @@ export interface Translations {
     chatSessions: string;
     close: string;
     newSession: string;
+    delete: string;
+    confirm: string;
+    cancel: string;
+    confirmDelete: string;
     loading: string;
     noSessions: string;
     messages: string;
     last: string;
     lite: string;
     refresh: string;
+    switchFailed: string;
   };
   settingsModal: {
     settings: string;
@@ -214,6 +220,38 @@ export interface Translations {
     baseFolderPlaceholder: string;
     model: string;
     deepseekV4Flash: string;
+    modelName: string;
+    modelNamePlaceholder: string;
+    coderModel: string;
+    feedbackModel: string;
+    apiKey: string;
+    apiKeyPlaceholder: string;
+    apiUrl: string;
+    apiUrlPlaceholder: string;
+    keepApiKey: string;
+    modelManagement: string;
+    provider: string;
+    operation: string;
+    builtinModels: string;
+    customModels: string;
+    customProvider: string;
+    addModel: string;
+    addingModel: string;
+    editModel: string;
+    updateModel: string;
+    updatingModel: string;
+    deleteModel: string;
+    deletingModel: string;
+    confirmDeleteModel: string;
+    modelAdded: string;
+    modelUpdated: string;
+    modelDeleted: string;
+    activating: string;
+    modelActivated: string;
+    loadingModels: string;
+    noModels: string;
+    close: string;
+    reset: string;
     test: string;
     saving: string;
     save: string;
@@ -227,6 +265,7 @@ export interface Translations {
   statePanel: {
     stateDetails: string;
     close: string;
+    reset: string;
     transport: string;
     noTransport: string;
     scheduler: string;
@@ -361,7 +400,7 @@ export const zhCN: Translations = {
     jobs: '作业',
     active: '活跃',
     failed: '失败',
-    monitorFile: '监控',
+    monitorFile: '数据源',
     budget: '预算',
     wall: '墙上时间',
     left: '剩余',
@@ -370,9 +409,9 @@ export const zhCN: Translations = {
     activeAlerts: '条活跃告警',
     noActiveAlerts: '无活跃告警',
     costAndLatency: '资源消耗',
-    cpu: 'CPU',
-    memory: '内存',
-    storage: '存储',
+    cpu: 'CPU（系统）',
+    memory: '内存（系统）',
+    storage: '存储（系统）',
     cost: '成本',
     tokensReserved: 'Tokens',
     reserved: '预留',
@@ -423,6 +462,7 @@ export const zhCN: Translations = {
   reportViewer: {
     reportNav: '报告导航',
     keyReport: '关键报告',
+    download: '下载',
     pdf: '打印PDF',
     scienceflow: 'ScienceFlow',
     defaultLead: 'ScienceFlow 工作空间报告。',
@@ -430,13 +470,18 @@ export const zhCN: Translations = {
   sessionPanel: {
     chatSessions: '聊天会话',
     close: '关闭',
-    newSession: '+ 新建会话',
+    newSession: '新建会话',
+    delete: '删除',
+    confirm: '确认删除',
+    cancel: '取消',
+    confirmDelete: '再次点击确认删除该会话',
     loading: '加载中...',
     noSessions: '未找到会话',
     messages: '条消息',
     last: '最后:',
     lite: '轻量',
     refresh: '刷新',
+    switchFailed: '会话切换失败',
   },
   settingsModal: {
     settings: '设置',
@@ -460,7 +505,39 @@ export const zhCN: Translations = {
     baseFolderPlaceholder: '/path/to/tasks',
     model: '模型',
     deepseekV4Flash: 'deepseek-v4-flash',
-    test: '测试',
+    modelName: '模型名称',
+    modelNamePlaceholder: '请输入模型名称',
+    coderModel: 'Coder 模型',
+    feedbackModel: 'Feedbacker 模型',
+    apiKey: 'API Key',
+    apiKeyPlaceholder: '请输入 API Key',
+    apiUrl: '模型路径',
+    apiUrlPlaceholder: '请输入模型路径',
+    keepApiKey: '留空则保留当前 API Key',
+    modelManagement: '模型管理',
+    provider: '模型路径',
+    operation: '操作',
+    builtinModels: '内置',
+    customModels: '自定义',
+    customProvider: '自定义',
+    addModel: '新增模型',
+    addingModel: '新增中...',
+    editModel: '编辑模型',
+    updateModel: '更新模型',
+    updatingModel: '更新中...',
+    deleteModel: '删除模型',
+    deletingModel: '删除中...',
+    confirmDeleteModel: '确定删除这个模型吗？',
+    modelAdded: '模型已新增',
+    modelUpdated: '模型已更新',
+    modelDeleted: '模型已删除',
+    activating: '切换中...',
+    modelActivated: '模型已切换，新任务生效',
+    loadingModels: '加载模型中...',
+    noModels: '暂无模型',
+    close: '关闭',
+    reset: '重置',
+    test: '测试连接',
     saving: '保存中...',
     save: '保存',
     testing: '测试中...',
@@ -473,6 +550,7 @@ export const zhCN: Translations = {
   statePanel: {
     stateDetails: '状态详情',
     close: '关闭',
+    reset: '重置',
     transport: '传输',
     noTransport: '无传输数据',
     scheduler: '调度器',
@@ -607,7 +685,7 @@ export const enUS: Translations = {
     jobs: 'jobs',
     active: 'active',
     failed: 'failed',
-    monitorFile: 'monitor',
+    monitorFile: 'Source',
     budget: 'Budget',
     wall: 'wall',
     left: 'left',
@@ -616,9 +694,9 @@ export const enUS: Translations = {
     activeAlerts: 'active alerts',
     noActiveAlerts: 'no active alerts',
     costAndLatency: 'Resource Usage',
-    cpu: 'CPU',
-    memory: 'Memory',
-    storage: 'Storage',
+    cpu: 'CPU (System)',
+    memory: 'Memory (System)',
+    storage: 'Storage (System)',
     cost: 'Cost',
     tokensReserved: 'Tokens',
     reserved: 'Reserved',
@@ -669,6 +747,7 @@ export const enUS: Translations = {
   reportViewer: {
     reportNav: 'Report navigation',
     keyReport: 'Key Report',
+    download: 'Download',
     pdf: 'Print PDF',
     scienceflow: 'ScienceFlow',
     defaultLead: 'ScienceFlow workspace report.',
@@ -676,13 +755,18 @@ export const enUS: Translations = {
   sessionPanel: {
     chatSessions: 'Chat Sessions',
     close: 'Close',
-    newSession: '+ New Session',
+    newSession: 'New Session',
+    delete: 'Delete',
+    confirm: 'Confirm Delete',
+    cancel: 'Cancel',
+    confirmDelete: 'Click again to confirm deletion',
     loading: 'Loading...',
     noSessions: 'No sessions found',
     messages: 'messages',
     last: 'Last:',
     lite: 'lite',
     refresh: 'Refresh',
+    switchFailed: 'Failed to switch session',
   },
   settingsModal: {
     settings: 'Settings',
@@ -706,7 +790,39 @@ export const enUS: Translations = {
     baseFolderPlaceholder: '/path/to/tasks',
     model: 'Model',
     deepseekV4Flash: 'deepseek-v4-flash',
-    test: 'Test',
+    modelName: 'Model name',
+    modelNamePlaceholder: 'Enter model name',
+    coderModel: 'Coder Model',
+    feedbackModel: 'Feedbacker Model',
+    apiKey: 'API Key',
+    apiKeyPlaceholder: 'Enter API key',
+    apiUrl: 'Model Url',
+    apiUrlPlaceholder: 'Enter model url',
+    keepApiKey: 'Leave blank to keep current API key',
+    modelManagement: 'Model management',
+    provider: 'Model Url',
+    operation: 'Operation',
+    builtinModels: 'Built-in',
+    customModels: 'Custom',
+    customProvider: 'Custom',
+    addModel: 'Add model',
+    addingModel: 'Adding...',
+    editModel: 'Edit model',
+    updateModel: 'Update model',
+    updatingModel: 'Updating...',
+    deleteModel: 'Delete model',
+    deletingModel: 'Deleting...',
+    confirmDeleteModel: 'Delete this model?',
+    modelAdded: 'Model added',
+    modelUpdated: 'Model updated',
+    modelDeleted: 'Model deleted',
+    activating: 'Activating...',
+    modelActivated: 'Model switched; applies to new tasks',
+    loadingModels: 'Loading models...',
+    noModels: 'No models',
+    close: 'Close',
+    reset: 'Reset',
+    test: 'Test Connection',
     saving: 'Saving...',
     save: 'Save',
     testing: 'Testing...',
@@ -719,6 +835,7 @@ export const enUS: Translations = {
   statePanel: {
     stateDetails: 'State Details',
     close: 'Close',
+    reset: 'Reset',
     transport: 'Transport',
     noTransport: 'No transport data',
     scheduler: 'Scheduler',

@@ -55,21 +55,22 @@ type BackendConfig struct {
 // to `python -m scienceflow.cli` with a per-session manifest, placing the
 // execution workspace under $SCIFLOW_WORKSPACE_ROOT/<user>/<session>.
 type AgentConfig struct {
-	Enabled        bool     `json:"enabled"`         // master switch for agent invocation
-	Python         string   `json:"python"`          // python interpreter (or "uv run python")
-	Module         string   `json:"module"`          // CLI module, default "scienceflow.cli"
-	Command        string   `json:"command"`         // subcommand: repl | run
-	ConfigYAML     string   `json:"config_yaml"`     // -c config path passed to the CLI
-	RepoRoot       string   `json:"repo_root"`       // cwd for the subprocess (ScienceFlow repo root)
-	WorkspaceRoot  string   `json:"workspace_root"`  // overrides $SCIFLOW_WORKSPACE_ROOT if non-empty
-	InputDataDir   string   `json:"input_data_dir"`  // optional -d shared dataset root
-	ExpID          string   `json:"exp_id"`          // optional --exp-id
-	Timeout        Duration `json:"timeout"`         // per-invocation wall-clock cap; 0 = unbounded
-	HeavyTimeout   Duration `json:"heavy_timeout"`   // wall-clock cap for heavy (run --type lnr) tasks; 0 = use timeout
-	MaxConcurrent  int      `json:"max_concurrent"`  // max simultaneous running agent processes (0 = unlimited)
-	MaxQueue       int      `json:"max_queue"`        // max tasks waiting in queue when all slots full; 0 = unlimited
+	Enabled          bool     `json:"enabled"`            // master switch for agent invocation
+	Python           string   `json:"python"`             // python interpreter (or "uv run python")
+	Module           string   `json:"module"`             // CLI module, default "scienceflow.cli"
+	Command          string   `json:"command"`            // subcommand: repl | run
+	ConfigYAML       string   `json:"config_yaml"`        // -c config path passed to the CLI
+	RepoRoot         string   `json:"repo_root"`          // cwd for the subprocess (ScienceFlow repo root)
+	WorkspaceRoot    string   `json:"workspace_root"`     // overrides $SCIFLOW_WORKSPACE_ROOT if non-empty
+	InputDataDir     string   `json:"input_data_dir"`     // optional -d shared dataset root
+	ExpID            string   `json:"exp_id"`             // optional --exp-id
+	Timeout          Duration `json:"timeout"`            // per-invocation wall-clock cap; 0 = unbounded
+	HeavyTimeout     Duration `json:"heavy_timeout"`      // wall-clock cap for heavy (run --type lnr) tasks; 0 = use timeout
+	MaxConcurrent    int      `json:"max_concurrent"`     // max simultaneous running agent processes (0 = unlimited)
+	MaxQueue         int      `json:"max_queue"`          // max tasks waiting in queue when all slots full; 0 = unlimited
 	FileSyncInterval Duration `json:"file_sync_interval"` // workspace file-tree change polling interval
-	LogDirName     string   `json:"log_dir_name"`    // subdir under workspace for agent logs fed back via SSE
+	LogDirName       string   `json:"log_dir_name"`       // subdir under workspace for agent logs fed back via SSE
+	ModelStorePath   string   `json:"model_store_path"`   // JSON file for runtime model configs
 }
 
 type AuthConfig struct {
@@ -82,12 +83,12 @@ type AuthConfig struct {
 
 // WorkspaceConfig limits the file/directory transfer endpoints.
 type WorkspaceConfig struct {
-	UploadMaxBytes  int64 `json:"upload_max_bytes"`   // multipart file-upload request body cap
-	ArchiveMaxBytes int64 `json:"archive_max_bytes"`  // zip archive upload body cap
-	ExtractMaxFiles int   `json:"extract_max_files"`  // max entries extracted from one zip
-	ExtractMaxBytes int64 `json:"extract_max_bytes"`  // max total bytes extracted from one zip
-	ZipMaxEntries   int   `json:"zip_max_entries"`    // max entries packed into one directory download
-	ZipMaxBytes     int64 `json:"zip_max_bytes"`      // max total bytes packed into one directory download
+	UploadMaxBytes  int64 `json:"upload_max_bytes"`  // multipart file-upload request body cap
+	ArchiveMaxBytes int64 `json:"archive_max_bytes"` // zip archive upload body cap
+	ExtractMaxFiles int   `json:"extract_max_files"` // max entries extracted from one zip
+	ExtractMaxBytes int64 `json:"extract_max_bytes"` // max total bytes extracted from one zip
+	ZipMaxEntries   int   `json:"zip_max_entries"`   // max entries packed into one directory download
+	ZipMaxBytes     int64 `json:"zip_max_bytes"`     // max total bytes packed into one directory download
 }
 
 type ServerConfig struct {
@@ -113,6 +114,13 @@ type InputConfig struct {
 	IgnoreOlder   Duration        `json:"ignore_older"`
 	PollInterval  Duration        `json:"poll_interval"`
 	Multiline     MultilineConfig `json:"multiline"` // 仅 mode=line 使用
+	// StartOffset pins the read position to the file size captured when
+	// WatchFile registered a dynamically-tracked file (e.g. a task's RAW.log).
+	// Without it the harvester would tail from whatever size the file has when
+	// it attaches, silently skipping bytes written in between (task header,
+	// early output). HasStartOffset distinguishes "start at 0" from "unset".
+	StartOffset    int64 `json:"start_offset,omitempty"`
+	HasStartOffset bool  `json:"has_start_offset,omitempty"`
 }
 
 type RegistryConfig struct {
@@ -164,6 +172,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Agent.LogDirName == "" {
 		c.Agent.LogDirName = "task_logs"
+	}
+	if c.Agent.ModelStorePath == "" {
+		c.Agent.ModelStorePath = "data/models.json"
 	}
 	if c.Agent.MaxConcurrent == 0 {
 		c.Agent.MaxConcurrent = 4

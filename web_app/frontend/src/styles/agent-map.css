@@ -308,14 +308,14 @@
     }
 
     .chat-action-button {
-      width: 44px;
-      min-width: 44px;
-      height: 38px;
-      min-height: 38px;
+      width: 30px;
+      min-width: 30px;
+      height: 30px;
+      min-height: 30px;
+      padding: 0;
+      border-radius: 50%;
       display: inline-grid;
       place-items: center;
-      padding: 0;
-      border-radius: 999px;
       touch-action: manipulation;
       user-select: none;
       -webkit-user-select: none;
@@ -323,8 +323,8 @@
     }
 
     .chat-action-button .chat-action-icon {
-      width: 17px;
-      height: 17px;
+      width: 14px;
+      height: 14px;
       display: none;
     }
 
@@ -453,15 +453,20 @@
     }
 
     .chat-action-button[data-action-state="stop"] {
-      color: #ffd7dc;
+      color: #ff5a6e;
       border-color: rgba(255, 107, 122, .48);
-      background: rgba(255, 107, 122, .12);
+      background: transparent;
+    }
+
+    .chat-action-button[data-action-state="stop"] .chat-action-icon svg {
+      fill: currentColor;
+      stroke: currentColor;
     }
 
     .chat-action-button[data-action-state="stop"]:hover {
-      color: #fff5f6;
+      color: #ff7484;
       border-color: rgba(255, 107, 122, .70);
-      background: rgba(255, 107, 122, .20);
+      background: rgba(255, 107, 122, .10);
     }
 
     .composer-add {
@@ -2019,8 +2024,12 @@
     }
 
     .doc-action {
+      width: 24px;
       height: 24px;
-      padding: 0 9px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       border: 1px solid rgba(92, 200, 255, .28);
       border-radius: var(--r-sm);
       background: rgba(92, 200, 255, .09);

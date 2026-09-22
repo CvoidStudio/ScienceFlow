@@ -1,28 +1,4 @@
-const DEFAULT_REPORT = `# ScienceFlow Workspace Report
-
-ScienceFlow is a WebUI for agent-driven scientific and machine-learning workflows. It connects task submission, dataset context, runtime monitoring, agent chat, artifacts, and final reports into one workspace.
-
-## What ScienceFlow Does
-
-Use Chat Sessions to create a task workspace, then use the chat setup menu to switch Lite/Heavy mode or attach a dataset. The agent can inspect files, run analysis, create figures, update reports, and keep the workspace state synchronized with the backend.
-
-> When a task produces a final report, this page is replaced automatically with the workspace report. Figures, tables, and generated artifacts are rendered inline when they are available.
-
-## Typical Workflow
-
-1. Create a task from Chat Sessions.
-2. Use the chat setup menu to select Lite/Heavy mode and optionally upload a local dataset.
-3. Use Chat Agent for planning, analysis, code execution, iteration, and reporting.
-4. Watch timeline, state, node details, logs, and generated artifacts update live.
-
-## Runtime Surfaces
-
-| surface | purpose |
-| --- | --- |
-| L0 | Task creation, high-level status, report reading, and Chat Agent interaction. |
-| L1 | Node-level artifacts, logs, code, metrics, and workspace inspection. |
-| State | Transport health, patch synchronization, scheduler state, and workspace metadata. |
-`;
+const DEFAULT_REPORT = `No logs yet — send a message to start`;
 
 export function getDefaultReport(): string {
   return DEFAULT_REPORT;

@@ -15,6 +15,7 @@ export function useFileSync() {
   useEffect(() => {
     const off = EventsOn('gateway-file', (e: FileTreeEvent) => {
       const store = useGatewayStore.getState();
+      if (e.session_id && store.sessionId && e.session_id !== store.sessionId) return;
 
       if (e.kind === 'tree') {
         store.applyFileTree(e.root || '', e.tree || []);

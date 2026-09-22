@@ -49,12 +49,29 @@ export interface ParsedAgentLog {
   reasoningBlocks: string[];
   summary: string;
   raw: string;
+  // Segment index of each run's raw task header (=== [ts] task=... ===),
+  // i.e. where every run's reasoning begins. Used to anchor chat messages
+  // to their run's workflow blocks even after a refresh/backfill.
+  runStarts: number[];
+}
+
+export interface ParsedChatLogMessage {
+  message_id: string;
+  role: 'user' | 'assistant' | 'platform';
+  content: string;
+  created_at: string;
+  // Segment index where this run's reasoning starts (present on user messages
+  // when runStarts data was available during parsing).
+  userWfStart?: number;
 }
 
 const HEADER_RE = /^===\s+(.+?)\s*:\s*(.*?)\s*===$/;
+const RAW_TASK_HEADER_RE = /^===\s+\[(.+?)\]\s+task=([^\s]+).*?\bquery=("(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\S.*?)\s*===$/;
+const CMD_HEADER_RE = /^===\s+cmd:\s*/;
 const TOOL_ARROW_RE = /^→\s+(.+)/;
 const SUMMARY_MARKER = /^---\s*$/;
 const SUMMARY_HEADER_RE = /^##\s+Summary/;
+const MANUAL_STOP_MARKER_RE = /^> 手动终止/; // rendered as a small footer line, not part of the answer
 
 function tryParseJSON(line: string): Record<string, unknown> | null {
   const trimmed = line.trim();
@@ -94,6 +111,7 @@ export function parseAgentLog(raw: string): ParsedAgentLog {
   let toolOutputBuf: string[] = [];
   let currentTool: ToolCall | null = null;
   let summaryParts: string[] = [];
+  const runStarts: number[] = [];
 
   const flushReasoning = () => {
     if (reasoningBuf.length > 0) {
@@ -126,6 +144,15 @@ export function parseAgentLog(raw: string): ParsedAgentLog {
       const value = hm[2].trim();
       headers.push({ key, value });
       segments.push({ type: 'header', text: `${key}: ${value}` });
+      // A raw task header marks the start of a new agent run.
+      if (RAW_TASK_HEADER_RE.test(line)) runStarts.push(segments.length - 1);
+      i++;
+      continue;
+    }
+
+    // Manual-stop marker: rendered by the chat view (parseHistoricalChatMessages),
+    // not by the workflow view.
+    if (MANUAL_STOP_MARKER_RE.test(line)) {
       i++;
       continue;
     }
@@ -216,7 +243,81 @@ export function parseAgentLog(raw: string): ParsedAgentLog {
     reasoningBlocks,
     summary: summaryParts.join('\n').trim(),
     raw,
+    runStarts,
   };
+}
+
+export function parseHistoricalChatMessages(raw: string, runStarts: number[] = []): ParsedChatLogMessage[] {
+  const lines = raw.split('\n');
+  const messages: ParsedChatLogMessage[] = [];
+  let current: { timestamp: string; query: string; output: string[]; stopMarker?: string; userWfStart?: number } | null = null;
+  let queryIndex = 0;
+
+  const flush = () => {
+    if (!current) return;
+    const query = current.query.trim();
+    const answer = current.output.join('\n').trim();
+    const createdAt = current.timestamp ? new Date(current.timestamp).toISOString() : new Date().toISOString();
+    const suffix = messages.length;
+    if (query) {
+      messages.push({
+        message_id: `history-user-${suffix}`,
+        role: 'user',
+        content: query,
+        created_at: createdAt,
+        userWfStart: current.userWfStart,
+      });
+    }
+    if (answer) {
+      messages.push({ message_id: `history-assistant-${suffix}`, role: 'assistant', content: answer, created_at: createdAt });
+    }
+    // Manual-stop marker becomes a standalone small footer line after the
+    // run's answer, never part of the answer content itself. Its timestamp is
+    // the marker's own wall-clock text (gateway local time), NOT the round's
+    // header time — otherwise a late-arriving marker can sort above the next
+    // round's question and transiently break the interleaved order.
+    if (current.stopMarker) {
+      const timeText = current.stopMarker.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/)?.[1];
+      const stopAt = timeText ? new Date(timeText) : null;
+      const stopIso =
+        stopAt && !isNaN(stopAt.getTime()) ? stopAt.toISOString() : createdAt;
+      messages.push({
+        message_id: `history-stop-${suffix}`,
+        role: 'platform',
+        content: current.stopMarker,
+        created_at: stopIso,
+      });
+    }
+    current = null;
+  };
+
+  for (const line of lines) {
+    const taskMatch = line.match(RAW_TASK_HEADER_RE);
+    if (taskMatch) {
+      flush();
+      let query = taskMatch[3].trim();
+      if ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'"))) {
+        query = query.slice(1, -1).replace(/\\([\\"'])/g, '$1');
+      }
+      current = {
+        timestamp: taskMatch[1],
+        query,
+        output: [],
+        userWfStart: runStarts[queryIndex],
+      };
+      queryIndex++;
+      continue;
+    }
+    if (!current || CMD_HEADER_RE.test(line) || line.startsWith('=== ')) continue;
+    if (MANUAL_STOP_MARKER_RE.test(line)) {
+      current.stopMarker = line.replace(/^>\s*/, '').trim();
+      continue;
+    }
+    if (!line.trim() || line.startsWith('ScienceFlow REPL') || line.startsWith('[repl-')) continue;
+    current.output.push(line);
+  }
+  flush();
+  return messages;
 }
 
 export function getHeader(headers: HeaderField[], key: string): string {

@@ -150,6 +150,8 @@ type Runner struct {
 	cfg    config.AgentConfig
 	logger *log.Logger
 
+	models *ModelStore
+
 	mu      sync.Mutex
 	running map[string]*Task // all live tasks (queued or running), keyed by task ID
 	bySess  map[string]*Task // latest task per session (for status queries)
@@ -171,9 +173,14 @@ func New(cfg config.AgentConfig, logger *log.Logger) *Runner {
 	if maxQueue <= 0 {
 		maxQueue = 16
 	}
+	models, err := NewModelStore(cfg.ModelStorePath)
+	if err != nil && logger != nil {
+		logger.Printf("load model store: %v", err)
+	}
 	r := &Runner{
 		cfg:      cfg,
 		logger:   logger,
+		models:   models,
 		running:  make(map[string]*Task),
 		bySess:   make(map[string]*Task),
 		queue:    make(chan *Task, maxQueue),
@@ -222,6 +229,11 @@ func (r *Runner) rootPath() (string, error) {
 // directory for file-tree sync.
 func (r *Runner) RootPath() (string, error) {
 	return r.rootPath()
+}
+
+// ModelStore returns the runtime model configuration store.
+func (r *Runner) ModelStore() *ModelStore {
+	return r.models
 }
 
 // Current returns the latest task for a session, if any.
@@ -632,6 +644,14 @@ func (r *Runner) runTask(t *Task) {
 		t.status = StatusDone
 	}
 	t.mu.Unlock()
+	// Mark manual termination in RAW.log so the chat history (parsed from the
+	// transcript on backfill) shows the run was stopped by the user instead of
+	// ending naturally. Written after doneCopy so it never interleaves with
+	// subprocess output. Uses gateway-local wall-clock time (container runs
+	// with TZ=Asia/Shanghai) so the timestamp matches the user's clock.
+	if t.killed && rawLog != nil {
+		_, _ = fmt.Fprintf(rawLog, "\n> 手动终止输出 · %s\n", time.Now().Format("2006-01-02 15:04:05"))
+	}
 	r.finalize(t)
 }
 
@@ -772,6 +792,32 @@ func (r *Runner) buildArgs(t *Task) []string {
 
 func (r *Runner) buildEnv(t *Task) []string {
 	env := os.Environ()
+	env = append(env,
+		"SCIFLOW_USER="+t.User,
+		"SCIFLOW_SESSION="+t.Session,
+		"SCIFLOW_TASK_ID="+t.ID,
+		"SCIFLOW_TASK_MODE="+t.Mode,
+		"SCIFLOW_TASK_WORKSPACE="+t.Workspace,
+	)
+	if r.models != nil {
+		// Stage models: per-session stage override, falling back to the
+		// session's main model and then the globally active model. Each
+		// stage uses its resolved entry's model name, api key and endpoint.
+		if code, ok := r.models.StageForSession(t.Session, "code"); ok {
+			env = append(env,
+				"CODE_MODEL="+code.ModelName,
+				"CODE_API_KEY="+code.APIKey,
+				"CODE_BASE_URL="+code.APIURL,
+			)
+		}
+		if feedback, ok := r.models.StageForSession(t.Session, "feedback"); ok {
+			env = append(env,
+				"FEEDBACK_MODEL="+feedback.ModelName,
+				"FEEDBACK_API_KEY="+feedback.APIKey,
+				"FEEDBACK_BASE_URL="+feedback.APIURL,
+			)
+		}
+	}
 	root := r.cfg.WorkspaceRoot
 	if root == "" {
 		root = os.Getenv("SCIFLOW_WORKSPACE_ROOT")

@@ -4,11 +4,17 @@ import {main} from '../models';
 
 export function DownloadZip(arg1:Array<string>,arg2:string,arg3:string):Promise<main.FilePayload>;
 
+export function GatewayActivateModel(arg1:string,arg2:string,arg3:string):Promise<main.GatewayModelInfo>;
+
 export function GatewayActivateSession(arg1:string,arg2:string):Promise<main.GatewaySession>;
 
 export function GatewayAgentStatus(arg1:string,arg2:string):Promise<main.GatewayAgentStatus>;
 
+export function GatewayCreateModel(arg1:string,arg2:main.GatewayModelCreateRequest):Promise<main.GatewayModelInfo>;
+
 export function GatewayCreateSession(arg1:string,arg2:Array<string>):Promise<main.GatewaySession>;
+
+export function GatewayDeleteModel(arg1:string,arg2:string):Promise<void>;
 
 export function GatewayDeleteSession(arg1:string,arg2:string):Promise<void>;
 
@@ -16,9 +22,13 @@ export function GatewayFetchFiles(arg1:string,arg2:string):Promise<main.FileTree
 
 export function GatewayFetchMonitor(arg1:string,arg2:string):Promise<main.GatewayMonitorMetrics>;
 
+export function GatewayGetModelStages(arg1:string,arg2:string):Promise<main.GatewayModelStages>;
+
 export function GatewayGetSession(arg1:string,arg2:string):Promise<main.GatewaySession>;
 
 export function GatewayInvokeAgent(arg1:string,arg2:string,arg3:main.GatewayInvokeRequest):Promise<main.GatewayTaskSnapshot>;
+
+export function GatewayListModels(arg1:string):Promise<Array<main.GatewayModelInfo>>;
 
 export function GatewayListSessions(arg1:string):Promise<main.GatewaySessionsResponse>;
 
@@ -28,17 +38,23 @@ export function GatewayLogin(arg1:main.GatewayLoginRequest):Promise<main.Gateway
 
 export function GatewayReadSnapshot(arg1:string,arg2:string,arg3:string):Promise<main.GatewaySnapshot>;
 
+export function GatewaySetModelStages(arg1:string,arg2:string,arg3:string,arg4:string):Promise<main.GatewayModelStages>;
+
 export function GatewayStartStream(arg1:string):Promise<void>;
 
 export function GatewayStopAgent(arg1:string,arg2:string):Promise<main.GatewayTaskSnapshot>;
 
 export function GatewayStopStream():Promise<void>;
 
+export function GatewayUpdateModel(arg1:string,arg2:string,arg3:main.GatewayModelUpdateRequest):Promise<main.GatewayModelInfo>;
+
 export function GatewayUpdateSessionSources(arg1:string,arg2:string,arg3:Array<string>):Promise<main.GatewaySession>;
 
 export function GetBackendURL():Promise<string>;
 
 export function GetGatewayURL():Promise<string>;
+
+export function GetSystemStats():Promise<main.SystemStats>;
 
 export function Proxy(arg1:main.ProxyRequest):Promise<main.ProxyResponse>;
 

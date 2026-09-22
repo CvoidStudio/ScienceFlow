@@ -6,6 +6,10 @@ export function DownloadZip(arg1, arg2, arg3) {
   return window['go']['main']['App']['DownloadZip'](arg1, arg2, arg3);
 }
 
+export function GatewayActivateModel(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GatewayActivateModel'](arg1, arg2, arg3);
+}
+
 export function GatewayActivateSession(arg1, arg2) {
   return window['go']['main']['App']['GatewayActivateSession'](arg1, arg2);
 }
@@ -14,8 +18,16 @@ export function GatewayAgentStatus(arg1, arg2) {
   return window['go']['main']['App']['GatewayAgentStatus'](arg1, arg2);
 }
 
+export function GatewayCreateModel(arg1, arg2) {
+  return window['go']['main']['App']['GatewayCreateModel'](arg1, arg2);
+}
+
 export function GatewayCreateSession(arg1, arg2) {
   return window['go']['main']['App']['GatewayCreateSession'](arg1, arg2);
+}
+
+export function GatewayDeleteModel(arg1, arg2) {
+  return window['go']['main']['App']['GatewayDeleteModel'](arg1, arg2);
 }
 
 export function GatewayDeleteSession(arg1, arg2) {
@@ -30,12 +42,20 @@ export function GatewayFetchMonitor(arg1, arg2) {
   return window['go']['main']['App']['GatewayFetchMonitor'](arg1, arg2);
 }
 
+export function GatewayGetModelStages(arg1, arg2) {
+  return window['go']['main']['App']['GatewayGetModelStages'](arg1, arg2);
+}
+
 export function GatewayGetSession(arg1, arg2) {
   return window['go']['main']['App']['GatewayGetSession'](arg1, arg2);
 }
 
 export function GatewayInvokeAgent(arg1, arg2, arg3) {
   return window['go']['main']['App']['GatewayInvokeAgent'](arg1, arg2, arg3);
+}
+
+export function GatewayListModels(arg1) {
+  return window['go']['main']['App']['GatewayListModels'](arg1);
 }
 
 export function GatewayListSessions(arg1) {
@@ -54,6 +74,10 @@ export function GatewayReadSnapshot(arg1, arg2, arg3) {
   return window['go']['main']['App']['GatewayReadSnapshot'](arg1, arg2, arg3);
 }
 
+export function GatewaySetModelStages(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GatewaySetModelStages'](arg1, arg2, arg3, arg4);
+}
+
 export function GatewayStartStream(arg1) {
   return window['go']['main']['App']['GatewayStartStream'](arg1);
 }
@@ -66,6 +90,10 @@ export function GatewayStopStream() {
   return window['go']['main']['App']['GatewayStopStream']();
 }
 
+export function GatewayUpdateModel(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GatewayUpdateModel'](arg1, arg2, arg3);
+}
+
 export function GatewayUpdateSessionSources(arg1, arg2, arg3) {
   return window['go']['main']['App']['GatewayUpdateSessionSources'](arg1, arg2, arg3);
 }
@@ -76,6 +104,10 @@ export function GetBackendURL() {
 
 export function GetGatewayURL() {
   return window['go']['main']['App']['GetGatewayURL']();
+}
+
+export function GetSystemStats() {
+  return window['go']['main']['App']['GetSystemStats']();
 }
 
 export function Proxy(arg1) {

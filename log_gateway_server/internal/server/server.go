@@ -101,6 +101,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /sessions/{id}/activate", s.handleActivateSession)
 	mux.HandleFunc("PUT /sessions/{id}/sources", s.handleSetSessionSources)
 	mux.HandleFunc("DELETE /sessions/{id}", s.handleDeleteSession)
+	mux.HandleFunc("GET /models", s.handleListModels)
+	mux.HandleFunc("POST /models", s.handleCreateModel)
+	mux.HandleFunc("PUT /models/{id}", s.handleUpdateModel)
+	mux.HandleFunc("DELETE /models/{id}", s.handleDeleteModel)
+	mux.HandleFunc("POST /models/{id}/activate", s.handleActivateModel)
+	mux.HandleFunc("GET /models/stages", s.handleGetModelStages)
+	mux.HandleFunc("PUT /models/stages", s.handleSetModelStages)
 	mux.HandleFunc("GET /sources", s.handleListSources)
 	mux.HandleFunc("GET /read_cached_content", s.handleReadCachedContent)
 	mux.HandleFunc("POST /sessions/{id}/invoke", s.handleInvokeAgent)
@@ -400,7 +407,8 @@ func (s *Server) handleActivateSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.sessionJSON(id, sess))
 }
 
-func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {	user, ok := s.userFromRequest(w, r)
+func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.userFromRequest(w, r)
 	if !ok {
 		return
 	}
@@ -465,6 +473,145 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.userFromRequest(w, r); !ok {
+		return
+	}
+	if s.agent == nil || s.agent.ModelStore() == nil {
+		http.Error(w, "agent model store not configured", http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"models": s.agent.ModelStore().List()})
+}
+
+func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.userFromRequest(w, r); !ok {
+		return
+	}
+	if s.agent == nil || s.agent.ModelStore() == nil {
+		http.Error(w, "agent model store not configured", http.StatusServiceUnavailable)
+		return
+	}
+	var req agent.ModelCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	model, err := s.agent.ModelStore().Create(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusCreated, model)
+}
+
+func (s *Server) handleUpdateModel(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.userFromRequest(w, r); !ok {
+		return
+	}
+	if s.agent == nil || s.agent.ModelStore() == nil {
+		http.Error(w, "agent model store not configured", http.StatusServiceUnavailable)
+		return
+	}
+	var req agent.ModelUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	model, err := s.agent.ModelStore().Update(r.PathValue("id"), req)
+	if err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "model not found" {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	writeJSON(w, http.StatusOK, model)
+}
+
+func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.userFromRequest(w, r); !ok {
+		return
+	}
+	if s.agent == nil || s.agent.ModelStore() == nil {
+		http.Error(w, "agent model store not configured", http.StatusServiceUnavailable)
+		return
+	}
+	if err := s.agent.ModelStore().Delete(r.PathValue("id")); err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "model not found" {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleActivateModel(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.userFromRequest(w, r); !ok {
+		return
+	}
+	if s.agent == nil || s.agent.ModelStore() == nil {
+		http.Error(w, "agent model store not configured", http.StatusServiceUnavailable)
+		return
+	}
+	model, err := s.agent.ModelStore().Activate(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if sessionID := strings.TrimSpace(r.URL.Query().Get("session_id")); sessionID != "" {
+		if err := s.agent.ModelStore().SetSessionModel(sessionID, model.ID); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"active_model": model})
+}
+
+func (s *Server) handleGetModelStages(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.userFromRequest(w, r); !ok {
+		return
+	}
+	if s.agent == nil || s.agent.ModelStore() == nil {
+		http.Error(w, "agent model store not configured", http.StatusServiceUnavailable)
+		return
+	}
+	coderID, feedbackID := s.agent.ModelStore().SessionStages(strings.TrimSpace(r.URL.Query().Get("session_id")))
+	writeJSON(w, http.StatusOK, map[string]any{"coder_model_id": coderID, "feedback_model_id": feedbackID})
+}
+
+func (s *Server) handleSetModelStages(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.userFromRequest(w, r); !ok {
+		return
+	}
+	if s.agent == nil || s.agent.ModelStore() == nil {
+		http.Error(w, "agent model store not configured", http.StatusServiceUnavailable)
+		return
+	}
+	var req struct {
+		SessionID       string `json:"session_id"`
+		CoderModelID    string `json:"coder_model_id"`
+		FeedbackModelID string `json:"feedback_model_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := s.agent.ModelStore().SetSessionStages(req.SessionID, req.CoderModelID, req.FeedbackModelID); err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "model not found" {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	coderID, feedbackID := s.agent.ModelStore().SessionStages(req.SessionID)
+	writeJSON(w, http.StatusOK, map[string]any{"coder_model_id": coderID, "feedback_model_id": feedbackID})
 }
 
 func (s *Server) handleListSources(w http.ResponseWriter, r *http.Request) {
@@ -560,6 +707,12 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		case <-notify:
 			sub.SetSources(s.sessions.Sources(sessionID))
 		case e := <-sub.Events():
+			// Per-session agent logs carry the owning session; a session-scoped
+			// stream must not receive other sessions' RAW.log lines (the hub
+			// only filters by source name).
+			if sessionID != "" && e.Session != "" && e.Session != sessionID {
+				continue
+			}
 			id := s.seq.Add(1)
 			fmt.Fprintf(w, "id: %d\nevent: log\ndata: %s\n\n", id, e.Marshal())
 			flusher.Flush()
@@ -846,8 +999,8 @@ func (s *Server) handleInvokeAgent(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, agent.ErrQueueFull) {
 			queued, running := s.agent.QueueStats()
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-				"error":  err.Error(),
-				"queued": queued,
+				"error":   err.Error(),
+				"queued":  queued,
 				"running": running,
 			})
 			return
