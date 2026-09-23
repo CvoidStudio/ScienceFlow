@@ -11,13 +11,14 @@ import (
 
 // Session is one client's subscription: a set of sources it currently follows.
 type Session struct {
-	id     string
-	name   string // human-readable label, created from the creation timestamp
-	user   string
-	mu     sync.RWMutex
-	srcs   map[string]bool
-	last   atomic.Int64  // last activity, unix nanoseconds
-	notify chan struct{} // capacity 1: signals a source-set change
+	id       string
+	name     string // human-readable label, created from the creation timestamp
+	user     string
+	mu       sync.RWMutex
+	srcs     map[string]bool
+	last     atomic.Int64  // last activity of any kind (SSE, reads, ...), unix nanoseconds; drives idle TTL
+	chatLast atomic.Int64  // last user chat action (invoke/stop), unix nanoseconds; drives "last_active" display & ordering
+	notify   chan struct{} // capacity 1: signals a source-set change
 }
 
 // Manager holds in-memory sessions with idle expiry, safe for concurrent use.
@@ -55,6 +56,7 @@ func (m *Manager) Create(user string, sources []string) string {
 		notify: make(chan struct{}, 1),
 	}
 	s.last.Store(time.Now().UnixNano())
+	s.chatLast.Store(time.Now().UnixNano()) // a fresh session counts as its own last chat time
 	s.setSources(sources)
 
 	m.mu.Lock()
@@ -123,7 +125,7 @@ func (m *Manager) Name(id string) string {
 	return ""
 }
 
-// ListByUser returns the live sessions owned by user, most recently active
+// ListByUser returns the live sessions owned by user, most recently chatted
 // first. Touching is left to the caller so a pure read does not skew TTLs.
 func (m *Manager) ListByUser(user string) []*Session {
 	m.mu.Lock()
@@ -135,9 +137,19 @@ func (m *Manager) ListByUser(user string) []*Session {
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
-		return out[i].last.Load() > out[j].last.Load()
+		return out[i].chatLast.Load() > out[j].chatLast.Load()
 	})
 	return out
+}
+
+// TouchChat stamps the session's last user chat action (invoke/stop) without
+// disturbing the idle-TTL clock.
+func (m *Manager) TouchChat(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.sessions[id]; ok {
+		s.chatLast.Store(time.Now().UnixNano())
+	}
 }
 
 // Notify returns the session's change-notification channel.
@@ -211,5 +223,8 @@ func (s *Session) User() string { return s.user }
 // Sources returns a copy of the session's source set.
 func (s *Session) Sources() []string { return s.sources() }
 
-// LastActive returns the last activity timestamp.
+// LastActive returns the last activity timestamp (any kind; drives idle TTL).
 func (s *Session) LastActive() time.Time { return time.Unix(0, s.last.Load()) }
+
+// ChatActive returns the last user chat action timestamp (invoke/stop).
+func (s *Session) ChatActive() time.Time { return time.Unix(0, s.chatLast.Load()) }

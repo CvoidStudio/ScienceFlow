@@ -74,7 +74,7 @@ export function L1Workspace() {
           <div className="card-head l1-card-head">
             <div className="l1-head-left">
               <div className="seg" data-tab-group={tabGroup} role="tablist">
-                <button type="button" title={t.l1Workspace.backToAgentMap} onClick={goBackToAgentMap}>Agent Map</button>
+                <button type="button" title={t.l1Workspace.backToAgentMap} onClick={goBackToAgentMap}>{t.l1Workspace.agentMapTab}</button>
                 <button className={clsx(l1Tab === 'workspace' && 'active')} data-tab-target="workspace" role="tab" aria-selected={l1Tab === 'workspace'} onClick={() => setL1Tab('workspace')}>{t.l1Workspace.workspace}</button>
                 <button className={clsx(l1Tab === 'key-report' && 'active')} data-tab-target="key-report" role="tab" aria-selected={l1Tab === 'key-report'} onClick={() => setL1Tab('key-report')}>{t.reportViewer.keyReport}</button>
                 <button className={clsx(l1Tab === 'optimization' && 'active')} data-tab-target="optimization" role="tab" aria-selected={l1Tab === 'optimization'} onClick={() => setL1Tab('optimization')}>{t.l1Workspace.lineage}</button>
@@ -636,8 +636,8 @@ function L1MonitorView() {
           </div>
           <div className="section-title">{t.l1Workspace.latencyHealth}</div>
           <div className="latency-metrics">
-            <div className={clsx('latency-metric', changedKeys.has('latency') && 'value-changed')}><span>{t.l1Workspace.firstResponse}</span><strong>{firstResponseAvg}</strong><small>latency</small></div>
-            <div className={clsx('latency-metric', changedKeys.has('throughput') && 'value-changed')}><span>{t.l1Workspace.fullReply}</span><strong>{fullReplyAvg}</strong><small>throughput</small></div>
+            <div className={clsx('latency-metric', changedKeys.has('latency') && 'value-changed')}><span>{t.l1Workspace.firstResponse}</span><strong>{firstResponseAvg}</strong><small>{t.l1Workspace.latencyLabel}</small></div>
+            <div className={clsx('latency-metric', changedKeys.has('throughput') && 'value-changed')}><span>{t.l1Workspace.fullReply}</span><strong>{fullReplyAvg}</strong><small>{t.l1Workspace.throughputLabel}</small></div>
             <div className={clsx('latency-metric', changedKeys.has('queue') && 'value-changed')}><span>{t.l1Workspace.queue}</span><strong>{scheduler?.queue_depth ?? 0}</strong><small>{t.l1Workspace.queued}</small></div>
             <div className={clsx('latency-metric', changedKeys.has('completed') && 'value-changed')}><span>{t.l1Workspace.done}</span><strong>{scheduler?.completed ?? 0}</strong><small>{t.l1Workspace.total}</small></div>
           </div>

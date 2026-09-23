@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -8,7 +8,9 @@ import type { UploadProps } from 'antd';
 import { useAppStore } from '../store/useAppStore';
 import { useGatewayStore } from '../store/useGatewayStore';
 import { gatewayInvokeAgent, gatewayStopAgent, workspaceUploadFiles } from '../api/gateway';
-import { useT } from '../i18n/useT';
+import { useT, useLang } from '../i18n/useT';
+import { formatSessionTime } from '../utils/sessionTime';
+import type { Translations } from '../i18n/translations';
 import * as api from '../api/client';
 import { debug } from '../utils/debug';
 import { getHeader, formatToolArgPreview, type ParsedSegment } from '../utils/agentLogParser';
@@ -28,6 +30,12 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   python: Code,
   python3: Code,
 };
+
+// 日志派生的 markdown 不渲染活动链接：代码片段（如 DICT[key](arg)）会被
+// remarkGfm 解析成 [文本](href) 链接，点击会以相对 URL 导航破坏 SPA。
+function PlainTextLink({ children }: { children?: ReactNode }) {
+  return <span className="chat-plain-link">{children}</span>;
+}
 
 const TOOL_COLORS: Record<string, string> = {
   bash: '#62d884',
@@ -53,6 +61,7 @@ export function ChatRail() {
   } = useAppStore();
   const { sessionList, fetchSessionList, switchSession, createSession, sessionId: gwSessionId } = useGatewayStore();
   const t = useT();
+  const lang = useLang();
 
   const [input, setInput] = useState('');
   const [datasetStatus, setDatasetStatus] = useState('');
@@ -93,14 +102,18 @@ export function ChatRail() {
   const handleSend = async () => {
     const text = input.trim();
     debug.log("ChatRail", "handleSend text=", text.slice(0, 60), "chatSessionId=", chatSessionId, "chatBusy=", chatBusy, "chatSendInFlight=", chatSendInFlight);
-    if (!text || chatBusy || chatSendInFlight) {
-      debug.log("ChatRail", "handleSend blocked: !text=", !text, "chatBusy=", chatBusy, "chatSendInFlight=", chatSendInFlight);
+    if (!text || chatBusy || chatRunState === 'cancelling' || chatSendInFlight) {
+      debug.log("ChatRail", "handleSend blocked: !text=", !text, "chatBusy=", chatBusy, "chatRunState=", chatRunState, "chatSendInFlight=", chatSendInFlight);
       return;
     }
+    // 点击后立即切到停止态（无过渡），不等会话创建/网络请求
+    useAppStore.setState({ chatSendInFlight: true, chatBusy: true, chatRunState: 'running' });
+
     let targetSessionId = chatSessionId;
     if (!targetSessionId) {
       const session = await createSession();
       if (!session) {
+        useAppStore.setState({ chatSendInFlight: false, chatBusy: false, chatRunState: 'idle' });
         debug.log("ChatRail", "failed to create gateway session");
         return;
       }
@@ -125,7 +138,6 @@ export function ChatRail() {
     };
     addChatMessage(userMsg);
 
-    useAppStore.setState({ chatSendInFlight: true, chatBusy: true, chatRunState: 'running' });
     try {
       debug.log("ChatRail", "invoking agent on gateway session", targetSessionId, "mode=", taskMode);
       const { token } = useGatewayStore.getState();
@@ -169,6 +181,8 @@ export function ChatRail() {
     }
 
     setChatRunState('cancelling');
+    // 立即释放按钮为发送态；若停止失败，catch 中恢复运行态
+    setChatBusy(false);
     try {
       const task = await gatewayStopAgent(token, sessionId);
       debug.log('ChatRail', 'stop response:', task);
@@ -200,6 +214,9 @@ export function ChatRail() {
       if (session) {
         useAppStore.getState().setChatMessages([]);
         useAppStore.getState().setChatSessionId(sessionId);
+        // 切换后先回到 idle，等新会话的 run_state 事件再更新徽章，避免残留上一会话的“运行中”
+        useAppStore.getState().setChatBusy(false);
+        useAppStore.getState().setChatRunState('idle');
         useAppStore.getState().clearTimeline();
         setSessionsPanelOpen(false);
       }
@@ -262,7 +279,8 @@ export function ChatRail() {
   };
 
   const isCancelling = chatRunState === 'cancelling';
-  const isAgentActive = chatBusy || chatRunState === 'running' || isCancelling;
+  // cancelling 不算活动态：点击停止瞬间按钮即回到发送外观（取消期间由 disabled 兜底）
+  const isAgentActive = chatBusy || chatRunState === 'running';
   const actionState = isAgentActive ? 'stop' : 'send';
 
   return (
@@ -272,7 +290,7 @@ export function ChatRail() {
         <div className="chat-head-actions">
           <span className={clsx('chat-status-badge', chatBusy && 'busy')}>
             <span className={clsx('state-dot', chatBusy ? 'pulse' : 'idle')} />
-            {chatRunState === 'running' ? t.chatRail.running : chatRunState === 'cancelling' ? '停止中' : chatRunState === 'cancelled' ? '已停止' : chatRunState === 'completed' ? t.chatRail.done : t.common.idle}
+            {chatRunState === 'running' ? t.chatRail.running : chatRunState === 'cancelling' ? t.chatRail.stopping : chatRunState === 'cancelled' ? t.chatRail.stopped : chatRunState === 'completed' ? t.chatRail.done : t.common.idle}
           </span>
           <button className="btn" id="frontToggleSessions" onClick={() => setSessionsPanelOpen(!sessionsPanelOpen)}>
             {t.chatRail.sessions}
@@ -311,10 +329,10 @@ export function ChatRail() {
                     </span>
                   </div>
                   <div className="session-card-meta" style={{ fontSize: 11, color: 'var(--soft)', marginTop: 3 }}>
-                    {s.sources?.length ?? 0} sources
+                    {s.sources?.length ?? 0} {t.common.sourcesUnit}
                     {s.last_active && (
                       <span className="dim" style={{ marginLeft: 8 }}>
-                        {formatLastActive(s.last_active)}
+                        {formatSessionTime(s.last_active, lang)}
                       </span>
                     )}
                   </div>
@@ -405,8 +423,8 @@ export function ChatRail() {
                     <span>{taskId ? t.chatRail.ready : t.chatRail.noTask}</span>
                     <button className="task-setup-close" type="button" onClick={() => setTaskSetupOpen(false)}>&times;</button>
                   </div>
-                  <div className="task-setup-empty" hidden={!!taskId}>{t.chatRail.createTaskFirst}</div>
-                  <div className="task-setup-controls" hidden={!taskId}>
+                  {/* 上传不依赖任务：无任务时也显示进度与结果，避免“先生成任务”误导 */}
+                  <div className="task-setup-controls">
                     <div className="dataset-upload-progress" hidden={!datasetUploadProgress}>
                       <div className="dataset-upload-progress-head"><span>{datasetUploadLabel}</span><span className="dataset-upload-progress-stats"><span>{datasetUploadSpeed}</span><span>{datasetUploadPercent}</span></span></div>
                       <div className="dataset-upload-progress-track"><i style={{ width: `${datasetUploadBarWidth}%` }}></i></div>
@@ -489,25 +507,6 @@ export function ChatRail() {
   );
 }
 
-function formatLastActive(rfc3339: string): string {
-  try {
-    const d = new Date(rfc3339);
-    const now = Date.now();
-    const diff = now - d.getTime();
-    const sec = Math.floor(diff / 1000);
-    if (sec < 0) return 'just now';
-    if (sec < 60) return `${sec}s ago`;
-    const min = Math.floor(sec / 60);
-    if (min < 60) return `${min}m ago`;
-    const hr = Math.floor(min / 60);
-    if (hr < 24) return `${hr}h ago`;
-    const day = Math.floor(hr / 24);
-    return `${day}d ago`;
-  } catch {
-    return '';
-  }
-}
-
 function AgentWorkflowBlocks({ startIndex = 0, endIndex, historical = false }: { startIndex?: number; endIndex?: number; historical?: boolean }) {
   const { parsedLog, status, user, lines } = useGatewayStore();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -573,7 +572,7 @@ function AgentWorkflowBlocks({ startIndex = 0, endIndex, historical = false }: {
       {!historical && !endIndex && parsedLog.summary && (
         <div className="agent-wf-summary">
           <div className="chat-markdown" style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{parsedLog.summary}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: PlainTextLink }}>{parsedLog.summary}</ReactMarkdown>
           </div>
         </div>
       )}
@@ -650,7 +649,7 @@ function CollapsibleBlock({ segment }: { segment: ParsedSegment }) {
         {!collapsed && (
           <div className="agent-block-body">
             <div className="chat-markdown" style={{ fontSize: 12, color: 'var(--soft)', lineHeight: 1.5 }}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{segment.text}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: PlainTextLink }}>{segment.text}</ReactMarkdown>
             </div>
           </div>
         )}
@@ -730,7 +729,7 @@ function ChatMessageItem({ message }: { message: ChatMessage }) {
       <div className="message-body">
         {displayContent ? (
           <div className="chat-markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayContent}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: PlainTextLink }}>{displayContent}</ReactMarkdown>
             {useAppStore.getState().chatBusy && message.role === 'user' && !message.content && (
               <span className="stream-cursor" />
             )}

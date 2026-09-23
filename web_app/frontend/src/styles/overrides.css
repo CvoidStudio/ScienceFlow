@@ -266,7 +266,7 @@
 
     html[data-theme="paper-light"] .terminal-log {
       color: #3a3028;
-      background: #fef8ee;
+      /* background: #fef8ee; */
     }
 
     html[data-theme="paper-light"] .workspace-file-list,
@@ -2909,4 +2909,17 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Tree collapsed: floating tree pane (absolute, left 8px / top 8px, z-index 6)
+   overlaps the single-column file viewer head text — give the head left padding */
+.app[data-view="l1"] .workspace-browser.is-tree-collapsed .workspace-file-head {
+  padding-left: 52px;
+}
+
+/* 发送⇄停止按钮即时切换：覆盖全局 :where(button, ...) 的 130ms 过渡（上方 Global interaction polish），
+   状态切换必须瞬时无渐变 */
+.chat-action-button,
+.chat-action-button .chat-action-icon {
+  transition: none;
 }

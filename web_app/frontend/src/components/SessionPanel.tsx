@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { useGatewayStore } from '../store/useGatewayStore';
-import { useT } from '../i18n/useT';
+import { useT, useLang } from '../i18n/useT';
+import { formatSessionTime } from '../utils/sessionTime';
 
 export function SessionPanel() {
   const { setSessionsPanelOpen, setChatSessionId, setChatMessages, setChatBusy, setChatRunState, clearTimeline } = useAppStore();
   const { sessionList, fetchSessionList, switchSession, deleteSession, prepareNewSession, sessionId: gwSessionId } = useGatewayStore();
   const t = useT();
+  const lang = useLang();
 
   const [loading, setLoading] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -51,6 +53,9 @@ export function SessionPanel() {
       if (session) {
         setChatMessages([]);
         setChatSessionId(session.session_id);
+        // 切换后先回到 idle，等新会话的 run_state 事件再更新徽章，避免残留上一会话的“运行中”
+        setChatBusy(false);
+        setChatRunState('idle');
         clearTimeline();
         setSessionsPanelOpen(false);
       } else {
@@ -136,12 +141,12 @@ export function SessionPanel() {
                     </span>
                   </div>
                   <div style={{ fontSize: 13 }}>
-                    {s.sources?.length ?? 0} sources
+                    {s.sources?.length ?? 0} {t.common.sourcesUnit}
                   </div>
                   <div className="session-card-foot">
                     {s.last_active ? (
                       <span className="dim" style={{ fontSize: 11 }}>
-                        {formatLastActive(s.last_active)}
+                        {formatSessionTime(s.last_active, lang)}
                       </span>
                     ) : <span />}
                     <div className="session-delete-actions">
@@ -184,23 +189,4 @@ export function SessionPanel() {
       </div>
     </div>
   );
-}
-
-function formatLastActive(rfc3339: string): string {
-  try {
-    const d = new Date(rfc3339);
-    const now = Date.now();
-    const diff = now - d.getTime();
-    const sec = Math.floor(diff / 1000);
-    if (sec < 0) return 'just now';
-    if (sec < 60) return `${sec}s ago`;
-    const min = Math.floor(sec / 60);
-    if (min < 60) return `${min}m ago`;
-    const hr = Math.floor(min / 60);
-    if (hr < 24) return `${hr}h ago`;
-    const day = Math.floor(hr / 24);
-    return `${day}d ago`;
-  } catch {
-    return '';
-  }
 }

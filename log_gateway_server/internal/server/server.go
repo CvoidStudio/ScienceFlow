@@ -345,8 +345,8 @@ func (s *Server) sessionJSON(id string, sess *session.Session) map[string]any {
 		"name":              sess.Name(),
 		"user":              sess.User(),
 		"sources":           sess.Sources(),
-		"last_active":       sess.LastActive().UTC().Format(time.RFC3339Nano),
-		"last_active_nanos": sess.LastActive().UnixNano(),
+		"last_active":       sess.ChatActive().UTC().Format(time.RFC3339Nano),
+		"last_active_nanos": sess.ChatActive().UnixNano(),
 	}
 	if s.agent != nil {
 		if task := s.agent.Current(id); task != nil {
@@ -995,6 +995,10 @@ func (s *Server) handleInvokeAgent(w http.ResponseWriter, r *http.Request) {
 	// The agent outlives the HTTP request; detach from request cancellation.
 	ctx := context.WithoutCancel(r.Context())
 	task, err := s.agent.Invoke(ctx, user, id, query, mode)
+	if err == nil {
+		// A real chat action: stamp the display "last_active" (session list).
+		s.sessions.TouchChat(id)
+	}
 	if err != nil {
 		if errors.Is(err, agent.ErrQueueFull) {
 			queued, running := s.agent.QueueStats()
@@ -1080,6 +1084,8 @@ func (s *Server) handleAgentStop(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "task not stoppable", http.StatusConflict)
 		return
 	}
+	// Manual stop is also a user chat action for "last_active" display.
+	s.sessions.TouchChat(id)
 	// Give the subprocess a moment to be reaped so the response carries the
 	// terminal snapshot instead of a stale "running" status.
 	deadline := time.Now().Add(2 * time.Second)

@@ -52,8 +52,8 @@ export function Topbar({ authUser, onLogout }: TopbarProps) {
           </span>
         )}
         <button className="btn lang-toggle" type="button"
-          title={language === 'en-US' ? t.topbar.switchToEnglish : t.topbar.switchToChinese}
-          aria-label={language === 'en-US' ? t.topbar.switchToEnglish : t.topbar.switchToChinese}
+          title={language === 'en-US' ? t.topbar.switchToChinese : t.topbar.switchToEnglish}
+          aria-label={language === 'en-US' ? t.topbar.switchToChinese : t.topbar.switchToEnglish}
           onClick={toggleLang}>
           <Languages size={14} />
           {language === 'en-US' ? '\u4E2D\u6587' : 'EN'}

@@ -62,6 +62,8 @@ export interface Translations {
     agent: string;
     toolTrace: string;
     running: string;
+    stopping: string;
+    stopped: string;
     done: string;
     resolved: string;
     expired: string;
@@ -110,6 +112,9 @@ export interface Translations {
     scheduler: string;
     phase: string;
     exploitExplore: string;
+    agentMapTab: string;
+    latencyLabel: string;
+    throughputLabel: string;
     jobs: string;
     active: string;
     failed: string;
@@ -282,6 +287,7 @@ export interface Translations {
     attached: string;
     idle: string;
     hundredPercent: string;
+    sourcesUnit: string;
   };
 }
 
@@ -347,6 +353,8 @@ export const zhCN: Translations = {
     agent: '智能体',
     toolTrace: '工具追踪',
     running: '运行中',
+    stopping: '停止中',
+    stopped: '已停止',
     done: '完成',
     resolved: '已解决',
     expired: '已过期',
@@ -396,7 +404,10 @@ export const zhCN: Translations = {
     ensemble: '集成',
     scheduler: '调度器',
     phase: '阶段',
-    exploitExplore: '利用_探索',
+    exploitExplore: 'exploit_explore',
+    agentMapTab: 'Agent地图',
+    latencyLabel: '延迟',
+    throughputLabel: '吞吐',
     jobs: '作业',
     active: '活跃',
     failed: '失败',
@@ -567,6 +578,7 @@ export const zhCN: Translations = {
     attached: '已挂载',
     idle: '空闲',
     hundredPercent: '100%',
+    sourcesUnit: '个数据源',
   },
 };
 
@@ -578,7 +590,7 @@ export const enUS: Translations = {
     batch: 'Batch',
     settings: 'Settings',
     backToAgentMap: 'Back to Agent Map',
-    switchToChinese: '切换到中文',
+    switchToChinese: 'Switch to Chinese',
     switchToEnglish: 'Switch to English',
     logout: 'Sign out',
   },
@@ -632,6 +644,8 @@ export const enUS: Translations = {
     agent: 'Agent',
     toolTrace: 'TOOL TRACE',
     running: 'running',
+    stopping: 'stopping',
+    stopped: 'stopped',
     done: 'done',
     resolved: 'Resolved',
     expired: 'Expired',
@@ -682,6 +696,9 @@ export const enUS: Translations = {
     scheduler: 'Scheduler',
     phase: 'phase',
     exploitExplore: 'exploit_explore',
+    agentMapTab: 'Agent Map',
+    latencyLabel: 'latency',
+    throughputLabel: 'throughput',
     jobs: 'jobs',
     active: 'active',
     failed: 'failed',
@@ -852,6 +869,7 @@ export const enUS: Translations = {
     attached: 'attached',
     idle: 'idle',
     hundredPercent: '100%',
+    sourcesUnit: 'sources',
   },
 };
 
