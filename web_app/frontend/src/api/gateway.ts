@@ -58,6 +58,7 @@ export interface GatewaySourceInfo {
 
 export interface GatewaySession {
   session_id: string;
+  name?: string; // 空表示未命名（还没发过提问），首次提问后为提问首行
   user?: string;
   sources: string[];
   last_active?: string;

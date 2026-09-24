@@ -78,6 +78,7 @@ type GatewayActivateModelResponse struct {
 // GatewaySession is the sessions* endpoint shape.
 type GatewaySession struct {
 	SessionID       string               `json:"session_id"`
+	Name            string               `json:"name,omitempty"` // 首次提问后的会话名；空表示未命名
 	User            string               `json:"user,omitempty"`
 	Sources         []string             `json:"sources"`
 	LastActive      string               `json:"last_active,omitempty"`

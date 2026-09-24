@@ -408,6 +408,7 @@ export namespace main {
 	}
 	export class GatewaySession {
 	    session_id: string;
+	    name?: string;
 	    user?: string;
 	    sources: string[];
 	    last_active?: string;
@@ -421,6 +422,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.session_id = source["session_id"];
+	        this.name = source["name"];
 	        this.user = source["user"];
 	        this.sources = source["sources"];
 	        this.last_active = source["last_active"];

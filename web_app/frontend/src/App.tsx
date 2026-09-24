@@ -327,58 +327,6 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-
-                  <section
-                    className={clsx(
-                      'run-intelligence-events-drawer',
-                      stateEventsCollapsed && 'is-collapsed',
-                    )}
-                    data-run-intelligence-events
-                  >
-                    <button
-                      className="run-intelligence-events-toggle"
-                      onClick={() =>
-                        setStateEventsCollapsed(!stateEventsCollapsed)
-                      }
-                    >
-                      <strong>State Events</strong>
-                      <span data-state-events-meta>
-                        {timelineEvents.length > 0
-                          ? `${timelineEvents.length} events \u00b7 ${timelineEvents[timelineEvents.length - 1]?.time || ''}`
-                          : 'no events'}
-                      </span>
-                      <i>^</i>
-                    </button>
-                    <div className="run-intelligence-events-body">
-                      <div className="timeline" data-state-events-timeline>
-                        {timelineEvents.length === 0 ? (
-                          <div
-                            className="dim"
-                            style={{ padding: '12px 16px' }}
-                          >
-                            No state events recorded
-                          </div>
-                        ) : (
-                          timelineEvents
-                            .slice(-20)
-                            .map((ev, i) => (
-                              <div key={i} className="timeline-event">
-                                <div className="timeline-event-dot" />
-                                <div className="timeline-event-body">
-                                  <div className="timeline-event-head">
-                                    <strong>{ev.type}</strong>
-                                    <span className="dim">{ev.time}</span>
-                                  </div>
-                                  <div className="timeline-event-message">
-                                    {ev.message}
-                                  </div>
-                                </div>
-                              </div>
-                            ))
-                        )}
-                      </div>
-                    </div>
-                  </section>
                 </section>
               </div>
             </section>

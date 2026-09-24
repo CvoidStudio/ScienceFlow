@@ -4,6 +4,7 @@ import { useAppStore } from '../store/useAppStore';
 import { useGatewayStore } from '../store/useGatewayStore';
 import { useT, useLang } from '../i18n/useT';
 import { formatSessionTime } from '../utils/sessionTime';
+import { truncateText } from '../utils/helpers';
 
 export function SessionPanel() {
   const { setSessionsPanelOpen, setChatSessionId, setChatMessages, setChatBusy, setChatRunState, clearTimeline } = useAppStore();
@@ -141,7 +142,7 @@ export function SessionPanel() {
                     </span>
                   </div>
                   <div style={{ fontSize: 13 }}>
-                    {s.sources?.length ?? 0} {t.common.sourcesUnit}
+                    <span title={s.name || undefined}>{s.name ? truncateText(s.name, 20) : t.common.newSession}</span>
                   </div>
                   <div className="session-card-foot">
                     {s.last_active ? (

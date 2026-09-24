@@ -149,6 +149,7 @@ var ErrQueueFull = errors.New("agent task queue is full; try again later")
 type Runner struct {
 	cfg    config.AgentConfig
 	logger *log.Logger
+	loc    *time.Location // zone for human-facing marker timestamps (config agent.timezone)
 
 	models *ModelStore
 
@@ -177,9 +178,20 @@ func New(cfg config.AgentConfig, logger *log.Logger) *Runner {
 	if err != nil && logger != nil {
 		logger.Printf("load model store: %v", err)
 	}
+	// Stop-marker timestamps must match the user's wall clock. The container
+	// TZ is unreliable (resets to UTC across restarts), so the zone comes from
+	// config explicitly.
+	loc, locErr := time.LoadLocation(cfg.Timezone)
+	if locErr != nil || loc == nil {
+		loc = time.UTC
+		if logger != nil {
+			logger.Printf("invalid agent.timezone %q: %v; falling back to UTC", cfg.Timezone, locErr)
+		}
+	}
 	r := &Runner{
 		cfg:      cfg,
 		logger:   logger,
+		loc:      loc,
 		models:   models,
 		running:  make(map[string]*Task),
 		bySess:   make(map[string]*Task),
@@ -647,10 +659,11 @@ func (r *Runner) runTask(t *Task) {
 	// Mark manual termination in RAW.log so the chat history (parsed from the
 	// transcript on backfill) shows the run was stopped by the user instead of
 	// ending naturally. Written after doneCopy so it never interleaves with
-	// subprocess output. Uses gateway-local wall-clock time (container runs
-	// with TZ=Asia/Shanghai) so the timestamp matches the user's clock.
+	// subprocess output. Uses the configured display timezone (agent.timezone,
+	// default Asia/Shanghai) — NOT container-local time, which resets to UTC
+	// across container restarts.
 	if t.killed && rawLog != nil {
-		_, _ = fmt.Fprintf(rawLog, "\n> 手动终止输出 · %s\n", time.Now().Format("2006-01-02 15:04:05"))
+		_, _ = fmt.Fprintf(rawLog, "\n> 手动终止输出 · %s\n", time.Now().In(r.loc).Format("2006-01-02 15:04:05"))
 	}
 	r.finalize(t)
 }

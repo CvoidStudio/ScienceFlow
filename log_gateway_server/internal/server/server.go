@@ -998,6 +998,8 @@ func (s *Server) handleInvokeAgent(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		// A real chat action: stamp the display "last_active" (session list).
 		s.sessions.TouchChat(id)
+		// The first question names the session (shown in the session list).
+		s.sessions.MaybeNameFromQuery(id, query)
 	}
 	if err != nil {
 		if errors.Is(err, agent.ErrQueueFull) {

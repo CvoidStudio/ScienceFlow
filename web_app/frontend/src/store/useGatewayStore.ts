@@ -67,6 +67,7 @@ interface GatewayState {
   disconnect: () => Promise<void>;
   setSubscribedSources: (sources: string[]) => Promise<void>;
   fetchSessionList: () => Promise<void>;
+  nameSessionFromQuery: (sessionId: string, query: string) => void;
   prepareNewSession: () => void;
   createSession: () => Promise<GatewaySession | null>;
   switchSession: (sessionId: string) => Promise<GatewaySession | null>;
@@ -176,6 +177,18 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
       const res = await gatewayListSessions(token);
       set({ sessionList: res.sessions || [] });
     } catch { /* silent */ }
+  },
+
+  // 首次提问即为会话命名（镜像 lgw 的 MaybeNameFromQuery 规则），
+  // invoke 成功后就地更新列表，不必等下次 fetchSessionList。
+  nameSessionFromQuery: (sessionId, query) => {
+    const line = query.trim().split(/\r?\n/)[0].replace(/\s+/g, ' ').trim();
+    if (!line) return;
+    set((state) => ({
+      sessionList: state.sessionList.map((item) =>
+        item.session_id === sessionId && !item.name ? { ...item, name: line } : item,
+      ),
+    }));
   },
 
   prepareNewSession: () => {
@@ -374,6 +387,11 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
 
   clearFileTree: () => set({ fileTreeRoot: '', fileTree: [], fileNestedTree: [], fileTreeVersion: 0 }),
 }));
+
+// 调试句柄：控制台可用 __gws.getState() 检查 rawBuffer / parsedLog。
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__gws = useGatewayStore;
+}
 
 // Build a nested tree from a flat list of FileNode (relative slash-delimited paths).
 // Dir nodes are inferred from path prefixes even if not explicitly in the list.

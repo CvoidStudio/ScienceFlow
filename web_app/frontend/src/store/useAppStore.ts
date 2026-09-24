@@ -548,6 +548,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 }));
 
+// 调试句柄：控制台可用 __app.getState() 检查 chatMessages 等应用状态。
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__app = useAppStore;
+}
+
 // Download a single workspace file from the gateway session and return its text.
 async function downloadGatewayFileText(token: string, sessionId: string, path: string): Promise<string> {
   const blob = await workspaceDownloadFile(token, sessionId, path);

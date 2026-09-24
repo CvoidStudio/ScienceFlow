@@ -71,6 +71,7 @@ type AgentConfig struct {
 	FileSyncInterval Duration `json:"file_sync_interval"` // workspace file-tree change polling interval
 	LogDirName       string   `json:"log_dir_name"`       // subdir under workspace for agent logs fed back via SSE
 	ModelStorePath   string   `json:"model_store_path"`   // JSON file for runtime model configs
+	Timezone         string   `json:"timezone"`           // IANA zone for human-facing timestamps (e.g. stop markers); container TZ is unreliable
 }
 
 type AuthConfig struct {
@@ -205,6 +206,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Auth.File == "" {
 		c.Auth.File = "AUTH.yaml"
+	}
+	if c.Agent.Timezone == "" {
+		c.Agent.Timezone = "Asia/Shanghai"
 	}
 	if c.Auth.TokenTTL.Duration == 0 {
 		c.Auth.TokenTTL.Duration = 24 * time.Hour

@@ -250,7 +250,7 @@ export function parseAgentLog(raw: string): ParsedAgentLog {
 export function parseHistoricalChatMessages(raw: string, runStarts: number[] = []): ParsedChatLogMessage[] {
   const lines = raw.split('\n');
   const messages: ParsedChatLogMessage[] = [];
-  let current: { timestamp: string; query: string; output: string[]; stopMarker?: string; userWfStart?: number } | null = null;
+  let current: { timestamp: string; query: string; output: string[]; stopMarker?: string; userWfStart?: number; taskId?: string } | null = null;
   let queryIndex = 0;
 
   const flush = () => {
@@ -260,6 +260,17 @@ export function parseHistoricalChatMessages(raw: string, runStarts: number[] = [
     const createdAt = current.timestamp ? new Date(current.timestamp).toISOString() : new Date().toISOString();
     const suffix = messages.length;
     if (query) {
+      // 任务头即 "Task started" 平台消息的真身：乐观版本只存在于发送当次，
+      // 页面重载后消失；从日志头重建它，历史轮的系统消息不再丢失。
+      // 历史日志没有实时状态，不虚构 status 后缀。
+      if (current.taskId) {
+        messages.push({
+          message_id: `history-task-${current.taskId}-${suffix}`,
+          role: 'platform',
+          content: `Task started: ${current.taskId}`,
+          created_at: createdAt,
+        });
+      }
       messages.push({
         message_id: `history-user-${suffix}`,
         role: 'user',
@@ -304,6 +315,7 @@ export function parseHistoricalChatMessages(raw: string, runStarts: number[] = [
         query,
         output: [],
         userWfStart: runStarts[queryIndex],
+        taskId: taskMatch[2],
       };
       queryIndex++;
       continue;

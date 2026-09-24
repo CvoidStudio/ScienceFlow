@@ -37,6 +37,13 @@ export function valueOrDash(value: unknown): string {
   return String(value);
 }
 
+// 按显示字符截取文本（中英文/emoji 均算 1 个字符），超出 max 时截断并以“...”结尾。
+export function truncateText(text: string, max: number): string {
+  const chars = Array.from(text || '');
+  if (chars.length <= max) return text || '';
+  return chars.slice(0, max).join('') + '...';
+}
+
 export function hasDisplayValue(value: unknown): boolean {
   return value !== null && value !== undefined && value !== '';
 }

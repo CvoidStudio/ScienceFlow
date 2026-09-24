@@ -10,6 +10,7 @@ import { useGatewayStore } from '../store/useGatewayStore';
 import { gatewayInvokeAgent, gatewayStopAgent, workspaceUploadFiles } from '../api/gateway';
 import { useT, useLang } from '../i18n/useT';
 import { formatSessionTime } from '../utils/sessionTime';
+import { truncateText } from '../utils/helpers';
 import type { Translations } from '../i18n/translations';
 import * as api from '../api/client';
 import { debug } from '../utils/debug';
@@ -143,6 +144,8 @@ export function ChatRail() {
       const { token } = useGatewayStore.getState();
       const task = await gatewayInvokeAgent(token, targetSessionId, text, taskMode);
       debug.log("ChatRail", "invoke response:", task);
+      // 首次提问即命名会话，列表立即显示新名字（与服务端规则一致）
+      useGatewayStore.getState().nameSessionFromQuery(targetSessionId, text);
       addChatMessage({
         message_id: `task-${task.id}`,
         role: 'platform',
@@ -329,7 +332,7 @@ export function ChatRail() {
                     </span>
                   </div>
                   <div className="session-card-meta" style={{ fontSize: 11, color: 'var(--soft)', marginTop: 3 }}>
-                    {s.sources?.length ?? 0} {t.common.sourcesUnit}
+                    <span title={s.name || undefined}>{s.name ? truncateText(s.name, 20) : t.common.newSession}</span>
                     {s.last_active && (
                       <span className="dim" style={{ marginLeft: 8 }}>
                         {formatSessionTime(s.last_active, lang)}
@@ -348,34 +351,53 @@ export function ChatRail() {
               const el = e.currentTarget;
               chatStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
             }}>
-              {/* 按时间顺序交错渲染：每轮问答后紧跟该轮的解析过程，
-                  下一轮提问出现在上一轮解析过程之后。 */}
+              {/* 按时间顺序交错渲染：每轮顺序固定为
+                  用户提问 → 任务/系统通知 → 解析块（reasoning，先于回答产生）
+                  → 答复 → 手动终止标记，下一轮提问出现在上一轮之后。 */}
               {(() => {
-                // 按轮次分组渲染，每轮顺序固定为：
-                // 用户提问 → 答复/系统消息 → 解析块（reasoning）→ 手动终止标记。
+                // 按轮次分组渲染，轮内严格按真实时间线排列。
                 const runs: {
                   user?: ChatMessage;
                   msgs: ChatMessage[];
                   stops: ChatMessage[];
                   startAnchor?: number;
                 }[] = [];
+                // "Task started"/"Failed" 是本轮的预告型系统消息：invoke 发起即产生，
+                // 与提问的毫秒级时差不稳定（日志头可能被排队延迟写入），靠时间戳
+                // 排序会让它偶尔跳到提问上面。正常时序（排在提问后）直接挂入当前
+                // 轮立即渲染；仅当排在提问前（时间反转）才暂存、预挂到下一轮开头。
+                const pendingPlatform: ChatMessage[] = [];
                 for (const msg of chatMessages) {
                   if (msg.role === 'user') {
-                    runs.push({ user: msg, msgs: [], stops: [], startAnchor: msg.userWfStart });
-                  } else {
+                    const run = { user: msg, msgs: [] as ChatMessage[], stops: [] as ChatMessage[], startAnchor: msg.userWfStart };
+                    run.msgs.push(...pendingPlatform.splice(0));
+                    runs.push(run);
+                  } else if (msg.message_id.startsWith('history-stop-')) {
                     if (runs.length === 0) runs.push({ msgs: [], stops: [] });
-                    const run = runs[runs.length - 1];
-                    if (msg.message_id.startsWith('history-stop-')) run.stops.push(msg);
-                    else run.msgs.push(msg);
+                    pendingPlatform.splice(0).forEach((p) => runs[runs.length - 1].msgs.push(p));
+                    runs[runs.length - 1].stops.push(msg);
+                  } else if (msg.role === 'platform') {
+                  pendingPlatform.push(msg);
+                } else {
+                    if (runs.length === 0) runs.push({ msgs: [], stops: [] });
+                    pendingPlatform.splice(0).forEach((p) => runs[runs.length - 1].msgs.push(p));
+                    runs[runs.length - 1].msgs.push(msg);
                   }
+                }
+                // 尾部残余（运行中的 Task started 卡在最后一轮尾）兜底挂入。
+                if (pendingPlatform.length > 0) {
+                  if (runs.length === 0) runs.push({ msgs: [], stops: [] });
+                  runs[runs.length - 1].msgs.push(...pendingPlatform.splice(0));
                 }
                 const items: React.ReactNode[] = [];
                 runs.forEach((run, i) => {
                   if (run.user) {
                     items.push(<ChatMessageItem key={run.user.message_id} message={run.user} />);
                   }
+                  // 平台/系统消息（Task started、Failed 等）在 agent 开始思考前产生，
+                  // 排在解析块之前。
                   for (const m of run.msgs) {
-                    items.push(<ChatMessageItem key={m.message_id} message={m} />);
+                    if (m.role !== 'assistant') items.push(<ChatMessageItem key={m.message_id} message={m} />);
                   }
                   const start = run.startAnchor ?? 0;
                   if (i < runs.length - 1) {
@@ -388,6 +410,10 @@ export function ChatRail() {
                   } else {
                     // 最后一个运行块实时渲染（也覆盖已结束的最后一轮）。
                     items.push(<AgentWorkflowBlocks key="wf-live" startIndex={start} />);
+                  }
+                  // 回答在解析块（reasoning）之后，与其产生顺序一致。
+                  for (const m of run.msgs) {
+                    if (m.role === 'assistant') items.push(<ChatMessageItem key={m.message_id} message={m} />);
                   }
                   for (const s of run.stops) {
                     items.push(<ChatMessageItem key={s.message_id} message={s} />);
@@ -529,19 +555,8 @@ function AgentWorkflowBlocks({ startIndex = 0, endIndex, historical = false }: {
 
   const hasContent = segments.length > 0 || (!historical && lines.length > 0);
 
-  if (!hasContent) {
-    if (historical) return null;
-    return (
-      <div className="dim" style={{ display: 'grid', placeItems: 'center', textAlign: 'center', padding: '20px 0' }}>
-        <div>
-          <p style={{ margin: 0, fontSize: 13 }}>Agent Copilot</p>
-          <p style={{ margin: '6px 0 0', fontSize: 11 }}>
-            {status === 'idle' ? '连接日志网关后，智能体工作流将在此实时呈现。' : '等待智能体输出…'}
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // 空块不渲染任何占位：聊天流里空解析块/“等待输出”提示会打乱轮次观感。
+  if (!hasContent) return null;
 
   const body = (
     <>

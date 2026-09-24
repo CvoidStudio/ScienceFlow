@@ -287,7 +287,7 @@ export interface Translations {
     attached: string;
     idle: string;
     hundredPercent: string;
-    sourcesUnit: string;
+    newSession: string;
   };
 }
 
@@ -578,7 +578,7 @@ export const zhCN: Translations = {
     attached: '已挂载',
     idle: '空闲',
     hundredPercent: '100%',
-    sourcesUnit: '个数据源',
+    newSession: '新会话',
   },
 };
 
@@ -869,7 +869,7 @@ export const enUS: Translations = {
     attached: 'attached',
     idle: 'idle',
     hundredPercent: '100%',
-    sourcesUnit: 'sources',
+    newSession: 'New session',
   },
 };
 

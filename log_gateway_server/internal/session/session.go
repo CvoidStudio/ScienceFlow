@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,7 +13,8 @@ import (
 // Session is one client's subscription: a set of sources it currently follows.
 type Session struct {
 	id       string
-	name     string // human-readable label, created from the creation timestamp
+	name     string // human-readable label; empty until named after the first user question
+	named    bool   // true once the name has been derived from the first user question
 	user     string
 	mu       sync.RWMutex
 	srcs     map[string]bool
@@ -50,7 +52,7 @@ func (m *Manager) Create(user string, sources []string) string {
 	id := newID()
 	s := &Session{
 		id:     id,
-		name:   time.Now().Format("20060102-150405"), // "%Y%m%d-%H%M%S"
+		name:   "", // named after the first user question (MaybeNameFromQuery)
 		user:   user,
 		srcs:   make(map[string]bool),
 		notify: make(chan struct{}, 1),
@@ -149,6 +151,29 @@ func (m *Manager) TouchChat(id string) {
 	defer m.mu.Unlock()
 	if s, ok := m.sessions[id]; ok {
 		s.chatLast.Store(time.Now().UnixNano())
+	}
+}
+
+// MaybeNameFromQuery names the session after its first user question: the
+// first line of the query, whitespace-collapsed. Takes effect only once —
+// later questions never rename the session. Empty queries are ignored.
+func (m *Manager) MaybeNameFromQuery(id string, query string) {
+	line := strings.TrimSpace(query)
+	if i := strings.IndexAny(line, "\r\n"); i >= 0 {
+		line = line[:i]
+	}
+	line = strings.Join(strings.Fields(line), " ")
+	if line == "" {
+		return
+	}
+	if runes := []rune(line); len(runes) > 120 { // storage cap; display truncation is the frontend's job
+		line = string(runes[:120])
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.sessions[id]; ok && !s.named {
+		s.name = line
+		s.named = true
 	}
 }
 

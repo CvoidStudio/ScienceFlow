@@ -7,9 +7,9 @@
   "auth": {
     "enabled": true,
     "file": "AUTH.yaml",
-    "token_secret": "",
+    "token_secret": "vl56xkcs7hc0s7u4d3i65746c1qt9kob035h3eyfsxxvmf0s",
     "token_ttl": "24h",
-    "session_ttl": "1h"
+    "session_ttl": "24h"
   },
   "backend": {
     "url": "http://127.0.0.1:8200"
@@ -28,7 +28,8 @@
     "max_concurrent": 4,
     "max_queue": 16,
     "file_sync_interval": "3s",
-    "log_dir_name": "task_logs"
+    "log_dir_name": "task_logs",
+    "timezone": "Asia/Shanghai"
   },
   "inputs": [
     {
