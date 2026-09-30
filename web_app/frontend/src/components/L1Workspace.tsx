@@ -11,26 +11,21 @@ import { AgentLineageView } from './AgentLineageView';
 import { ReportViewer } from './ReportViewer';
 import clsx from 'clsx';
 import { Copy, Check, Download, Printer, Upload, FolderUp } from 'lucide-react';
-import { metricText, shortenId, valueOrDash } from '../utils/helpers';
+import { metricText, shortenId } from '../utils/helpers';
 import * as api from '../api/client';
 import {
   workspaceDownloadFile,
   workspaceDownloadDir,
   workspaceUploadFiles,
-  gatewayFetchFiles,
-  gatewayFetchMonitor,
-  getSystemStats,
-  type GatewayMonitorMetrics,
-  type SystemStats,
 } from '../api/gateway';
-import type { NodeInfo, PerformanceSample, FileTreeNode } from '../types';
+import type { FileTreeNode } from '../types';
+import { MonitorPanel } from './MonitorPanel';
+import { WorkspaceTabs } from './WorkspaceTabs';
 
 export function L1Workspace() {
   const {
-    currentState, l1Scope, l1Tab, setL1Tab,
-    setView, setFrontTab, setL1Scope, setBatchPanelCollapsed,
+    currentState, l1Tab, setL1Tab,
     monitorCollapsed, setMonitorCollapsed,
-    selectedNodeIndex, selectNode,
     reportList, selectedReportPath, reportContent, fetchReports, fetchReportContent,
   } = useAppStore();
   const t = useT();
@@ -40,14 +35,6 @@ export function L1Workspace() {
   }, [l1Tab, fetchReports]);
 
   const state = currentState;
-  const nodes = state?.nodes || [];
-  const task = state?.task;
-  const summary = state?.summary;
-  const scopeLabel = l1Scope === 'node'
-    ? `${t.l1Workspace.node} ${shortenId(nodes[selectedNodeIndex]?.node_id || '', 12)}`
-    : t.l1Workspace.taskScope;
-
-  const tabGroup = 'l1';
   const selectedReport = reportList.find((report) => report.report_key === selectedReportPath || report.path === selectedReportPath);
 
   const downloadSelectedReport = () => {
@@ -61,28 +48,11 @@ export function L1Workspace() {
     URL.revokeObjectURL(url);
   };
 
-  const goBackToAgentMap = () => {
-    setView('l0');
-    setFrontTab('agent-map');
-    setBatchPanelCollapsed(true);
-  };
-
   return (
     <div className={clsx('l1-grid', monitorCollapsed && 'monitor-collapsed')}>
       <section className="stack run-workspace">
         <div className="card workspace-card">
-          <div className="card-head l1-card-head">
-            <div className="l1-head-left">
-              <div className="seg" data-tab-group={tabGroup} role="tablist">
-                <button type="button" title={t.l1Workspace.backToAgentMap} onClick={goBackToAgentMap}>{t.l1Workspace.agentMapTab}</button>
-                <button className={clsx(l1Tab === 'workspace' && 'active')} data-tab-target="workspace" role="tab" aria-selected={l1Tab === 'workspace'} onClick={() => setL1Tab('workspace')}>{t.l1Workspace.workspace}</button>
-                <button className={clsx(l1Tab === 'key-report' && 'active')} data-tab-target="key-report" role="tab" aria-selected={l1Tab === 'key-report'} onClick={() => setL1Tab('key-report')}>{t.reportViewer.keyReport}</button>
-                <button className={clsx(l1Tab === 'optimization' && 'active')} data-tab-target="optimization" role="tab" aria-selected={l1Tab === 'optimization'} onClick={() => setL1Tab('optimization')}>{t.l1Workspace.lineage}</button>
-                <button className={clsx(l1Tab === 'logs' && 'active')} data-tab-target="logs" role="tab" aria-selected={l1Tab === 'logs'} onClick={() => setL1Tab('logs')}>{t.l1Workspace.logs}</button>
-              </div>
-            </div>
-            <span className="card-subtitle" data-l1-scope-label>{scopeLabel}</span>
-          </div>
+          <WorkspaceTabs />
           <div className="card-body">
             <div className={clsx('tab-panel workspace-panel', l1Tab === 'workspace' && 'active')} data-tab-panel="l1:workspace">
               <WorkspaceBrowserView />
@@ -162,7 +132,7 @@ export function L1Workspace() {
         </button>
         {!monitorCollapsed && (
           <div className="card-body">
-            <L1MonitorView />
+            <MonitorPanel />
           </div>
         )}
       </aside>
@@ -244,436 +214,6 @@ function L1BoardView() {
             <div className="l1-board-line">{t.l1Workspace.taskStatus} {summary?.status || t.common.attached}</div>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function blobToText(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = reject;
-    reader.readAsText(blob);
-  });
-}
-
-function parseTimeTrace(sessionId: string, path: string, text: string): GatewayMonitorMetrics | null {
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) return null;
-  const headers = lines[0].split(',').map((value) => value.trim());
-  const indexes = new Map(headers.map((header, index) => [header, index]));
-  const sum = (name: string) => lines.slice(1).reduce((total, line) => {
-    const fields = line.split(',');
-    return total + Number(fields[indexes.get(name) ?? -1] || 0);
-  }, 0);
-  const input = sum('tokens_input');
-  const output = sum('tokens_output');
-  const cached = sum('tokens_cached');
-  return {
-    session_id: sessionId,
-    workspace: '',
-    updated_at: '',
-    sources: [path],
-    resources: {
-      cpu_percent: 0,
-      memory_percent: 0,
-      memory_used_gb: 0,
-      storage_bytes: 0,
-      storage_files: 0,
-      storage_display: '',
-    },
-    tokens: { reserved: true, input, output, cached, total: input + output },
-    runtime: { status: 'idle', elapsed: '--', elapsed_ms: 0 },
-  } as GatewayMonitorMetrics;
-}
-
-function formatMonitorBytes(bytes: number): string {
-  if (!bytes) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let value = bytes;
-  let index = 0;
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
-    index++;
-  }
-  return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
-}
-
-function fallbackMonitorFromFiles(sessionId: string, tree: FileTreeNode[]): GatewayMonitorMetrics {
-  const files = tree.filter((node) => node.type === 'file');
-  const storageBytes = files.reduce((sum, node) => sum + (node.size || 0), 0);
-  const newest = files.reduce((max, node) => Math.max(max, node.mtime || 0), 0);
-  return {
-    session_id: sessionId,
-    workspace: '',
-    updated_at: newest ? new Date(newest * 1000).toISOString() : '',
-    sources: ['workspace file tree'],
-    resources: {
-      cpu_percent: 0,
-      memory_percent: 0,
-      memory_used_gb: 0,
-      storage_bytes: storageBytes,
-      storage_files: files.length,
-      storage_display: formatMonitorBytes(storageBytes),
-    },
-    tokens: {
-      reserved: true,
-      input: 0,
-      output: 0,
-      cached: 0,
-      total: 0,
-    },
-    runtime: {
-      status: 'idle',
-      elapsed: '--',
-      elapsed_ms: 0,
-    },
-  } as GatewayMonitorMetrics;
-}
-
-function parseMonitorState(sessionId: string, path: string, text: string): GatewayMonitorMetrics | null {
-  try {
-    const state = JSON.parse(text);
-    const resources = state.resources || state;
-    const tokens = state.tokens || state;
-    const runtime = state.runtime || state;
-    const input = Number(tokens.input ?? tokens.total_tokens_in ?? tokens.tokens_in ?? tokens.input_tokens ?? 0);
-    const output = Number(tokens.output ?? tokens.total_tokens_out ?? tokens.tokens_out ?? tokens.output_tokens ?? 0);
-    const cached = Number(tokens.cached ?? tokens.total_tokens_cached ?? tokens.tokens_cached ?? tokens.cached_tokens ?? 0);
-    return {
-      session_id: sessionId,
-      workspace: '',
-      updated_at: state.updated_at || state.timestamp || '',
-      sources: [path],
-      resources: {
-        cpu_percent: Number(resources.cpu_percent ?? resources.cpu ?? resources.cpu_usage ?? resources.cpu_usage_percent ?? 0),
-        memory_percent: Number(resources.memory_percent ?? resources.memory ?? resources.memory_usage_percent ?? 0),
-        memory_used_gb: Number(resources.memory_used_gb ?? resources.memory_gb ?? 0),
-        storage_bytes: 0,
-        storage_files: 0,
-        storage_display: '',
-      },
-      tokens: {
-        reserved: true,
-        input,
-        output,
-        cached,
-        total: input + output,
-      },
-      runtime: {
-        status: runtime.status || runtime.run_status || 'idle',
-        elapsed: runtime.elapsed || '--',
-        elapsed_ms: Number(runtime.elapsed_ms ?? 0),
-      },
-    } as GatewayMonitorMetrics;
-  } catch {
-    return null;
-  }
-}
-
-function mergeMonitorFallback(primary: GatewayMonitorMetrics, fallback: GatewayMonitorMetrics): GatewayMonitorMetrics {
-  const resources = primary.resources || ({} as any);
-  const fallbackResources = fallback.resources || ({} as any);
-  const primaryTokens = primary.tokens || ({} as any);
-  const fallbackTokens = fallback.tokens || ({} as any);
-  const input = primaryTokens.input || fallbackTokens.input || 0;
-  const output = primaryTokens.output || fallbackTokens.output || 0;
-  const cached = primaryTokens.cached || fallbackTokens.cached || 0;
-  return {
-    ...primary,
-    updated_at: primary.updated_at || fallback.updated_at,
-    sources: Array.from(new Set([...(primary.sources || []), ...(fallback.sources || [])])),
-    resources: {
-      ...resources,
-      storage_bytes: resources.storage_bytes || fallbackResources.storage_bytes || 0,
-      storage_files: resources.storage_files || fallbackResources.storage_files || 0,
-      storage_display: resources.storage_display || fallbackResources.storage_display || '',
-    },
-    tokens: {
-      ...primaryTokens,
-      reserved: true,
-      input,
-      output,
-      cached,
-      total: primaryTokens.total || fallbackTokens.total || input + output,
-    },
-  } as GatewayMonitorMetrics;
-}
-
-async function gatewayFetchMonitorFallback(token: string, sessionId: string): Promise<GatewayMonitorMetrics> {
-  const treeResponse = await gatewayFetchFiles(token, sessionId);
-  const tree = treeResponse.tree || [];
-  let fallback = fallbackMonitorFromFiles(sessionId, tree);
-  const traceFiles = tree.filter((node) => node.type === 'file' && node.path.replace(/\\/g, '/').endsWith('scienceflow_time_trace.csv'));
-  for (const traceFile of traceFiles) {
-    const parsed = parseTimeTrace(sessionId, traceFile.path, await blobToText(await workspaceDownloadFile(token, sessionId, traceFile.path)));
-    if (parsed) fallback = mergeMonitorFallback(parsed, fallback);
-  }
-  const monitorState = tree.find((node) => node.type === 'file' && node.path.replace(/\\/g, '/').endsWith('logs/monitor_state.json'));
-  if (!monitorState) return fallback;
-  const blob = await workspaceDownloadFile(token, sessionId, monitorState.path);
-  const parsed = parseMonitorState(sessionId, monitorState.path, await blobToText(blob));
-  return parsed ? mergeMonitorFallback(parsed, fallback) : fallback;
-}
-
-function L1MonitorView() {
-  const { currentState } = useAppStore();
-  const { token, sessionId } = useGatewayStore();
-  const t = useT();
-  const monitor = currentState?.monitor;
-  const [gatewayMonitor, setGatewayMonitor] = useState<GatewayMonitorMetrics | null>(null);
-  const [sysStats, setSysStats] = useState<SystemStats | null>(null);
-  const [monitorLoading, setMonitorLoading] = useState(false);
-  const prevRef = useRef<Record<string, unknown>>({});
-  const [changedKeys, setChangedKeys] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    let cancelled = false;
-    const fetchStats = async () => {
-      const stats = await getSystemStats();
-      if (!cancelled && stats) setSysStats(stats);
-    };
-    fetchStats();
-    const timer = window.setInterval(fetchStats, 5000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!token || !sessionId) {
-      setGatewayMonitor(null);
-      return;
-    }
-    let cancelled = false;
-    const fetchMonitor = async () => {
-      setMonitorLoading(true);
-      try {
-        const data = await gatewayFetchMonitor(token, sessionId);
-        if (!cancelled) setGatewayMonitor(data);
-      } catch {
-        try {
-          const fallback = await gatewayFetchMonitorFallback(token, sessionId);
-          if (!cancelled) setGatewayMonitor(fallback);
-        } catch {
-          if (!cancelled) setGatewayMonitor(null);
-        }
-      } finally {
-        if (!cancelled) setMonitorLoading(false);
-      }
-    };
-    fetchMonitor();
-    const timer = window.setInterval(fetchMonitor, 5000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [token, sessionId]);
-
-  const effectiveMonitor = gatewayMonitor || monitor;
-
-  useEffect(() => {
-    if (!effectiveMonitor) return;
-    const resources = (effectiveMonitor as any).resources;
-    const scheduler = (effectiveMonitor as any).scheduler;
-    const cost = (effectiveMonitor as any).cost;
-    const performance = (effectiveMonitor as any).performance;
-    const workers = (effectiveMonitor as any).workers || [];
-    const flat: Record<string, unknown> = {
-      cpu: resources?.cpu_percent ?? resources?.cpu ?? 0,
-      memory: resources?.memory_percent ?? resources?.memory ?? 0,
-      disk: resources?.storage_bytes ?? resources?.disk ?? 0,
-      cost: cost?.total || 0,
-      tokens: (effectiveMonitor as any).tokens?.total ?? 0,
-      queue: scheduler?.queue_depth || 0,
-      completed: scheduler?.completed || 0,
-      latency: performance?.latency || 0,
-      throughput: performance?.throughput || 0,
-      controlActive: workers.filter((w: any) => w.worker_id?.includes('control') && (w.status === 'running' || w.status === 'active')).length,
-      codeActive: workers.filter((w: any) => w.worker_id?.includes('code_agent') && (w.status === 'running' || w.status === 'active')).length,
-    };
-    const prev = prevRef.current;
-    const changed = new Set<string>();
-    for (const key of Object.keys(flat)) {
-      if (prev[key] !== undefined && prev[key] !== flat[key]) {
-        changed.add(key);
-      }
-      prev[key] = flat[key];
-    }
-    if (changed.size > 0) {
-      setChangedKeys(changed);
-      const timer = setTimeout(() => setChangedKeys(new Set()), 1200);
-      return () => clearTimeout(timer);
-    }
-  }, [effectiveMonitor]);
-
-  if (!effectiveMonitor) {
-    return <div className="dim monitor-empty">{monitorLoading ? t.l1Workspace.loadingMonitor : t.l1Workspace.noMonitorData}</div>;
-  }
-
-  const { runtime, cost, scheduler, resources, workers, alerts, performance } = effectiveMonitor as any;
-
-  const controlWorkers = workers?.filter((w: any) => w.worker_id?.includes('control')) || [];
-  const codeAgents = workers?.filter((w: any) => w.worker_id?.includes('code_agent')) || [];
-  const deepAgents = workers?.filter((w: any) => w.worker_id?.includes('deep_agent')) || [];
-  const ensembleWorkers = workers?.filter((w: any) => w.worker_id?.includes('ensemble')) || [];
-
-  const controlMax = controlWorkers.length || 1;
-  const codeMax = 2;
-  const deepMax = 1;
-  const ensembleMax = 1;
-
-  const controlActive = controlWorkers.filter((w: any) => w.status === 'running' || w.status === 'active').length;
-  const codeActive = codeAgents.filter((w: any) => w.status === 'running' || w.status === 'active').length;
-  const deepActive = deepAgents.filter((w: any) => w.status === 'running' || w.status === 'active').length;
-  const ensembleActive = ensembleWorkers.filter((w: any) => w.status === 'running' || w.status === 'active').length;
-
-  const cpuPct = Math.round(resources?.cpu_percent ?? resources?.cpu ?? 0);
-  const memoryPct = Math.round(resources?.memory_percent ?? resources?.memory ?? 0);
-  const sysCpu = sysStats ? Math.round(sysStats.cpu_percent) : null;
-  const sysMemory = sysStats ? formatMonitorBytes(sysStats.memory_used_bytes) : null;
-  const sysStorage = sysStats ? formatMonitorBytes(sysStats.disk_total_bytes) : null;
-  const cpuValue = sysCpu !== null ? `${sysCpu}%` : `${cpuPct}%`;
-  const taskMemory = resources?.memory_used_gb ? `${resources.memory_used_gb.toFixed(1)} GB` : (memoryPct ? `${memoryPct}%` : t.common.dash);
-  const memoryValue = sysMemory ?? taskMemory;
-  const taskStorage = resources?.storage_display || (resources?.disk ? `${resources.disk} GB` : t.common.dash);
-  const storageValue = sysStorage ?? taskStorage;
-  const donutPct = sysCpu ?? cpuPct;
-  const effectiveMonitorData = effectiveMonitor as any;
-  const tokensTotal = effectiveMonitorData?.tokens?.total ?? 0;
-  const tokensValue = tokensTotal > 0 ? tokensTotal.toLocaleString() : t.l1Workspace.reserved;
-  const sourceLabel = effectiveMonitorData?.sources?.length ? effectiveMonitorData.sources.join(' · ') : t.common.dash;
-  const runtimeStatus = runtime?.status || t.common.idle;
-
-  const costTotal = cost?.total || 0;
-
-  const latencySamples = performance?.samples || [];
-  const hasSamples = latencySamples.length > 0;
-
-  const firstResponseAvg = performance?.latency ? `${performance.latency}ms` : t.common.dash;
-  const fullReplyAvg = performance?.throughput ? `${performance.throughput} ctx/s` : t.common.dash;
-
-  const alertsCount = alerts?.length || 0;
-
-  return (
-    <div>
-      <div className="monitor-grid">
-        <div className="viz-card">
-          <div className="runtime-status-grid">
-            <div className="monitor-subpanel">
-              <div className="section-title">{t.l1Workspace.runtimeStatus}</div>
-              <div className="lane-grid">
-                <div className="lane">
-                  <span>{t.l1Workspace.control}</span>
-                  <div className="bar" style={{ '--w': `${(controlActive / controlMax) * 100}%` } as React.CSSProperties}><i></i></div>
-                  <span>{controlActive}/{controlMax}</span>
-                </div>
-                <div className="lane">
-                  <span>{t.l1Workspace.codeAgent}</span>
-                  <div className="bar" style={{ '--w': `${(codeActive / codeMax) * 100}%` } as React.CSSProperties}><i></i></div>
-                  <span>{codeActive}/{codeMax}</span>
-                </div>
-                <div className="lane">
-                  <span>{t.l1Workspace.deepAgent}</span>
-                  <div className="bar" style={{ '--w': `${(deepActive / deepMax) * 100}%` } as React.CSSProperties}><i></i></div>
-                  <span>{deepActive}/{deepMax}</span>
-                </div>
-                <div className="lane">
-                  <span>{t.l1Workspace.ensemble}</span>
-                  <div className="bar" style={{ '--w': `${(ensembleActive / ensembleMax) * 100}%` } as React.CSSProperties}><i></i></div>
-                  <span>{ensembleActive}/{ensembleMax}</span>
-                </div>
-              </div>
-            </div>
-            <div className="monitor-subpanel">
-              <div className="section-title">{t.l1Workspace.scheduler}</div>
-              <div className="kv">
-                <div className="kv-row"><span>{t.l1Workspace.phase}</span><span title={t.l1Workspace.exploitExplore}>{t.l1Workspace.exploitExplore}</span></div>
-                <div className="kv-row"><span>{t.l1Workspace.status}</span><span title={runtimeStatus}>{runtimeStatus}</span></div>
-                <div className="kv-row"><span>{t.l1Workspace.jobs}</span><span title={`${scheduler?.completed || 0} ${t.l1Workspace.active} / ${scheduler?.failed || 0} ${t.l1Workspace.failed}`}>{scheduler?.completed || 0} {t.l1Workspace.active} / {scheduler?.failed || 0} {t.l1Workspace.failed}</span></div>
-                <div className="kv-row"><span>{t.l1Workspace.monitorFile}</span><span title={sourceLabel}>{sourceLabel}</span></div>
-              </div>
-            </div>
-            <div className="monitor-subpanel monitor-wide">
-              <div className="runtime-wide-grid">
-                <div>
-                  <div className="section-title">{t.l1Workspace.budget}</div>
-                  <div className="bar-row">
-                    <span>{t.l1Workspace.wall}</span>
-                    <div className="bar" style={{ '--w': '60%' } as React.CSSProperties}><i></i></div>
-                    <span>{runtime?.elapsed || t.common.dash}</span>
-                  </div>
-                  <div className="bar-row">
-                    <span>{t.l1Workspace.left}</span>
-                    <div className="bar" style={{ '--w': '40%' } as React.CSSProperties}><i></i></div>
-                    <span>{t.l1Workspace.budgetRemaining}</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="section-title">{t.l1Workspace.riskHints}</div>
-                  <div className="kv">
-                    <div className="kv-row"><span>{t.l1Workspace.status}</span><span title={alertsCount > 0 ? `${alertsCount} ${t.l1Workspace.activeAlerts}` : t.l1Workspace.noActiveAlerts}>{alertsCount > 0 ? `${alertsCount} ${t.l1Workspace.activeAlerts}` : t.l1Workspace.noActiveAlerts}</span></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="viz-card">
-          <div className="section-title">{t.l1Workspace.costAndLatency}</div>
-          <div className="donut-row">
-            <div className="donut" style={{'--dp': `${donutPct}%`} as React.CSSProperties}>{donutPct}%</div>
-            <div className="kv">
-              <div className={clsx('kv-row', changedKeys.has('cpu') && 'value-changed')}><span>{t.l1Workspace.cpu}</span><span>{cpuValue}</span></div>
-              <div className={clsx('kv-row', changedKeys.has('memory') && 'value-changed')}><span>{t.l1Workspace.memory}</span><span>{memoryValue}</span></div>
-              <div className={clsx('kv-row', changedKeys.has('disk') && 'value-changed')}><span>{t.l1Workspace.storage}</span><span>{storageValue}</span></div>
-              <div className={clsx('kv-row', changedKeys.has('cost') && 'value-changed')}><span>{t.l1Workspace.cost}</span><span title={`$${costTotal.toFixed(2)}`}>${costTotal.toFixed(2)}</span></div>
-              <div className={clsx('kv-row', changedKeys.has('tokens') && 'value-changed')}><span>{t.l1Workspace.tokensReserved}</span><span title={tokensValue}>{tokensValue}</span></div>
-            </div>
-          </div>
-          <div className="section-title">{t.l1Workspace.latencyHealth}</div>
-          <div className="latency-metrics">
-            <div className={clsx('latency-metric', changedKeys.has('latency') && 'value-changed')}><span>{t.l1Workspace.firstResponse}</span><strong>{firstResponseAvg}</strong><small>{t.l1Workspace.latencyLabel}</small></div>
-            <div className={clsx('latency-metric', changedKeys.has('throughput') && 'value-changed')}><span>{t.l1Workspace.fullReply}</span><strong>{fullReplyAvg}</strong><small>{t.l1Workspace.throughputLabel}</small></div>
-            <div className={clsx('latency-metric', changedKeys.has('queue') && 'value-changed')}><span>{t.l1Workspace.queue}</span><strong>{scheduler?.queue_depth ?? 0}</strong><small>{t.l1Workspace.queued}</small></div>
-            <div className={clsx('latency-metric', changedKeys.has('completed') && 'value-changed')}><span>{t.l1Workspace.done}</span><strong>{scheduler?.completed ?? 0}</strong><small>{t.l1Workspace.total}</small></div>
-          </div>
-        </div>
-      </div>
-
-      <div className="section-title">{t.l1Workspace.recentLatencySamples}</div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>{t.l1Workspace.wall}</th>
-              <th>{t.l1Workspace.tokens}</th>
-              <th>{t.l1Workspace.cache}</th>
-              <th>{t.l1Workspace.workspace}</th>
-              <th>{t.l1Workspace.nextMonitorAction}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {hasSamples ? (
-              latencySamples.slice(-12).map((s: PerformanceSample, i: number) => (
-                <tr key={i}>
-                  <td className="dim">{s.timestamp}</td>
-                  <td>{s.value}</td>
-                  <td>{s.label}</td>
-                  <td className="dim">{t.common.dash}</td>
-                  <td className="dim">{t.common.dash}</td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td className="dim" colSpan={5}>{t.l1Workspace.noLatencySamples}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
       </div>
     </div>
   );

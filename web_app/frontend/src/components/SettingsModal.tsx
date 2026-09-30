@@ -17,16 +17,16 @@ import {
 
 export function SettingsModal() {
   const {
-    theme, fontSize, panelLayout, agentMapBackground,
-    setTheme, setFontSize, setPanelLayout, setAgentMapBackground,
-    runtimeSettings, settingsPanelOpen, setSettingsPanelOpen,
+    theme, fontSize, agentMapBackground,
+    setTheme, setFontSize, setAgentMapBackground,
+    settingsPanelOpen, setSettingsPanelOpen,
   } = useAppStore();
   const t = useT();
-  const { token, sessionId } = useGatewayStore();
+  const { token, sessionId, testConnection } = useGatewayStore();
 
-  const [llmModel, setLlmModel] = useState(
-    runtimeSettings?.model_name || t.settingsModal.deepseekV4Flash
-  );
+  const [backgrounds, setBackgrounds] = useState<string[]>([]);
+
+  const [llmModel, setLlmModel] = useState(t.settingsModal.deepseekV4Flash);
   const [models, setModels] = useState<GatewayModelInfo[]>([]);
   const [selectedModelId, setSelectedModelId] = useState('');
   const [selectedCoderId, setSelectedCoderId] = useState('');
@@ -42,11 +42,13 @@ export function SettingsModal() {
   const [status, setStatus] = useState(t.settingsModal.ready);
   const [saving, setSaving] = useState(false);
 
+  // Agent Map backgrounds come from <program dir>/themes/backgrounds; the
+  // option label is the image file name.
   useEffect(() => {
-    if (runtimeSettings?.model_name) {
-      setLlmModel(runtimeSettings.model_name);
-    }
-  }, [runtimeSettings]);
+    api.fetchThemeBackgrounds()
+      .then(setBackgrounds)
+      .catch(() => setBackgrounds([]));
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -177,13 +179,15 @@ export function SettingsModal() {
     }
   };
 
+  // Gateway-only connectivity check: probes the log gateway itself and
+  // updates the shared status shown in the topbar.
   const handleTest = async () => {
     setStatus(t.settingsModal.testing);
     try {
-      const health = await api.fetchHealth();
-      setStatus(health?.ok ? t.settingsModal.connectionOk : t.settingsModal.connectionFailed);
+      const health = await testConnection();
+      setStatus(`${t.settingsModal.connectionOk} · ${health.latency_ms}ms · ${health.url}`);
     } catch (e: unknown) {
-      setStatus(`Failed: ${(e as Error)?.message || t.settingsModal.unknownError}`);
+      setStatus(`${t.settingsModal.connectionFailed}: ${(e as Error)?.message || t.settingsModal.unknownError}`);
     }
   };
 
@@ -262,21 +266,15 @@ export function SettingsModal() {
               <select
                 data-settings-background-image
                 value={agentMapBackground}
-                onChange={(e) => setAgentMapBackground(e.target.value as typeof agentMapBackground)}
+                onChange={(e) => setAgentMapBackground(e.target.value)}
               >
-                <option value="default">{t.settingsModal.agentMapBackground}</option>
-                <option value="lab">{t.settingsModal.labBackground}</option>
-              </select>
-            </div>
-            <div className="field settings-panel-layout-field">
-              <label>{t.settingsModal.panelLayout}</label>
-              <select
-                data-settings-panel-layout
-                value={panelLayout}
-                onChange={(e) => setPanelLayout(e.target.value as typeof panelLayout)}
-              >
-                <option value="intelligence-left">{t.settingsModal.agentMap}</option>
-                <option value="chat-left">{t.settingsModal.platformChat}</option>
+                <option value="">{t.settingsModal.agentMapBackground}</option>
+                {(agentMapBackground && !backgrounds.includes(agentMapBackground)
+                  ? [agentMapBackground, ...backgrounds]
+                  : backgrounds
+                ).map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
               </select>
             </div>
           </div>

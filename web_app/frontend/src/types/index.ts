@@ -187,31 +187,11 @@ export interface TransportInfo {
   monitor_sample_limit: number;
 }
 
-export interface TransportMetrics {
-  _transport_client: {
-    mode: string;
-    cache: string;
-    build_ms: number;
-    response_ms: number;
-    payload_bytes: number;
-    modules_count: number;
-  };
-}
-
 export interface StatePatch {
   signature?: string;
   module_etags?: Record<string, string>;
   not_modified?: boolean;
   modules?: Record<string, unknown>;
-}
-
-export interface ChatSession {
-  session_id: string;
-  task_root: string;
-  mode: 'lite' | 'heavy' | '';
-  created_at: string;
-  message_count: number;
-  last_message_at: string;
 }
 
 export interface ChatMessage {
@@ -223,9 +203,9 @@ export interface ChatMessage {
   decision?: DecisionCard;
   route?: 'agent' | 'chat';
   idempotency_key?: string;
-  // Segment count of the gateway agent log at the moment this user message
-  // was sent; anchors where the previous run's reasoning blocks end.
-  userWfStart?: number;
+  // Index into the gateway log parser's runs[] when this message came from
+  // (or was matched to) a parsed agent run; anchors the execution timeline.
+  runIndex?: number;
 }
 
 export interface ChatToolEvent {
@@ -250,103 +230,6 @@ export interface ChatToolStep {
   created_at: string;
 }
 
-export type SSEEventType =
-  | 'run_started' | 'run_finished'
-  | 'tool_started' | 'tool_finished'
-  | 'assistant_delta'
-  | 'state_update'
-  | 'file_create'
-  | 'report_save'
-  | 'run_state'
-  | 'session_created'
-  | 'session_busy'
-  | 'assistant_message'
-  | 'log_entry';
-
-export interface ToolSSEEvent {
-  type: 'tool_started' | 'tool_finished';
-  event_id: string;
-  status: string;
-  name: string;
-  message: string;
-  title: string;
-  steps: ChatToolStep[];
-  summary?: string;
-  error?: string;
-  path?: string;
-}
-
-export interface AssistantDeltaSSEEvent {
-  type: 'assistant_delta';
-  message_id: string;
-  content: string;
-  chunk_size?: number;
-  chunk_delay_ms?: number;
-}
-
-export interface StateUpdateSSEEvent {
-  type: 'state_update';
-  data: Record<string, unknown>;
-}
-
-export interface FileCreateSSEEvent {
-  type: 'file_create';
-  path: string;
-  content: string;
-  is_dir: boolean;
-  local_path?: string;
-}
-
-export interface ReportSaveSSEEvent {
-  type: 'report_save';
-  filename: string;
-  title: string;
-}
-
-export interface RunStartedEvent {
-  type: 'run_started';
-  data: Record<string, unknown>;
-}
-
-export interface RunFinishedEvent {
-  type: 'run_finished';
-  data: Record<string, unknown>;
-}
-
-export interface SessionBusyEvent {
-  type: 'session_busy';
-}
-
-export interface AssistantMessageEvent {
-  type: 'assistant_message';
-  data: Record<string, unknown>;
-}
-
-export interface RunStateSSEEvent {
-  type: 'run_state';
-  state: string;
-  error?: string | null;
-}
-
-export interface SessionCreatedSSEEvent {
-  type: 'session_created';
-  session_id: string;
-  task_root: string;
-}
-
-export type SSEEvent =
-  | ToolSSEEvent
-  | AssistantDeltaSSEEvent
-  | StateUpdateSSEEvent
-  | FileCreateSSEEvent
-  | ReportSaveSSEEvent
-  | RunStartedEvent
-  | RunFinishedEvent
-  | SessionBusyEvent
-  | AssistantMessageEvent
-  | RunStateSSEEvent
-  | SessionCreatedSSEEvent;
-
 export interface DecisionCard {
   decision_id: string;
   title: string;
@@ -360,35 +243,6 @@ export interface DecisionCard {
 export interface DecisionOption {
   key: string;
   label: string;
-}
-
-export interface RuntimeSettings {
-  llm_base_url: string;
-  api_key: string;
-  model_name: string;
-}
-
-export interface BackendHealth {
-  ok: boolean;
-  version: string;
-  task_root: string;
-  allowed_roots: string[];
-  chat_runner: string;
-  runtime_settings: RuntimeSettings;
-}
-
-export interface WorkspaceFile {
-  name: string;
-  path: string;
-  is_dir: boolean;
-  size: number;
-  children?: WorkspaceFile[];
-  depth?: number;
-}
-
-export interface WorkspaceFileList {
-  files: WorkspaceFile[];
-  signature: string;
 }
 
 // ── Gateway file-tree types (new SSE-based sync) ──
@@ -434,9 +288,7 @@ export type View = 'l0' | 'l1';
 export type FrontTab = 'agent-map' | 'key-report';
 export type L1Tab = 'board' | 'optimization' | 'workspace' | 'key-report' | 'logs';
 export type Theme = 'scienceflow-dark' | 'paper-light';
-export type PanelLayout = 'intelligence-left' | 'chat-left';
 export type FontSize = 'small' | 'default' | 'large';
-export type AgentMapBackground = 'default' | 'lab';
 export type L1Scope = 'task' | 'node';
 export type ChatRunState = 'idle' | 'running' | 'finalizing' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 export type ChatRouteMode = 'chat' | 'agent';
@@ -545,37 +397,4 @@ export interface AgentMapEvent {
   message: string;
   status: string;
   created_at: string;
-}
-
-export interface AgentRoomPose {
-  id: string;
-  x: number;
-  y: number;
-  bubbleX: number;
-  bubbleY: number;
-  svgX: number;
-  svgY: number;
-  targetId: string;
-  action: string;
-  restAction: string;
-  facing: string;
-  moving: boolean;
-  renderX: number;
-  renderY: number;
-}
-
-export interface ToolCallItem {
-  name: string;
-  status: string;
-  input?: Record<string, unknown>;
-  output?: string;
-  error?: string;
-}
-
-export interface TimelineItem {
-  id: string;
-  type: 'assistant_chunk' | 'tool_call' | 'run_state';
-  chunk?: string;
-  tool?: ToolCallItem;
-  state?: string;
 }

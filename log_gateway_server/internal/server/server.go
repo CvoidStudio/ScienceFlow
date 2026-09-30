@@ -754,14 +754,23 @@ func (s *Server) sessionRawLogPath(sessionID string) (string, bool) {
 }
 
 // backfillFiles resolves the files whose cached content should be streamed for
-// a given source, scoped to the session. Agent RAW.log files are per-session;
-// static sources map to their current glob matches.
+// a given source, scoped to the session. Agent transcripts are per-session
+// (RAW.log + the installed CLI's interaction.log); static sources map to their
+// current glob matches.
 func (s *Server) backfillFiles(sessionID, source string) []string {
 	if source == agent.RawLogSource {
+		var out []string
 		if p, ok := s.sessionRawLogPath(sessionID); ok {
-			return []string{p}
+			out = append(out, p)
 		}
-		return nil
+		if dir, ok := s.sessionWorkspaceDir(sessionID); ok {
+			if p := agent.SessionInteractionLogPath(dir); p != "" {
+				if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+					out = append(out, p)
+				}
+			}
+		}
+		return out
 	}
 	return s.lookup(source)
 }

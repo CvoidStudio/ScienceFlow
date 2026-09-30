@@ -1,24 +1,30 @@
-import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Upload, Tooltip, Dropdown } from 'antd';
 import type { UploadProps } from 'antd';
 import { useAppStore } from '../store/useAppStore';
 import { useGatewayStore } from '../store/useGatewayStore';
 import { gatewayInvokeAgent, gatewayStopAgent, workspaceUploadFiles } from '../api/gateway';
-import { useT, useLang } from '../i18n/useT';
-import { formatSessionTime } from '../utils/sessionTime';
-import { truncateText } from '../utils/helpers';
-import type { Translations } from '../i18n/translations';
+import { useT } from '../i18n/useT';
 import * as api from '../api/client';
 import { debug } from '../utils/debug';
-import { getHeader, formatToolArgPreview, type ParsedSegment } from '../utils/agentLogParser';
+import {
+  formatToolArgPreview,
+  isOutputTruncationMarker,
+  runDuration,
+  type ParsedAgentRun,
+  type ParsedAgentStep,
+} from '../utils/agentLogParser';
+import { sanitizeReportMarkdown } from '../utils/helpers';
 import clsx from 'clsx';
-import { Upload as UploadIcon, FolderUp, Mic, ArrowUp, Square, Terminal, FileText, Pencil, FileEdit, Search, FolderOpen, List, Code, Wrench, ChevronRight } from 'lucide-react';
+import {
+  Upload as UploadIcon, FolderUp, Mic, ArrowUp, Square, Terminal, FileText,
+  Pencil, FileEdit, Search, FolderOpen, List, Code, Wrench, ChevronRight,
+  Check, X, Loader2, Brain, Copy, Sparkles,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import type { ChatMessage, ChatToolStep } from '../types';
+import type { ChatMessage } from '../types';
 
 const TOOL_ICONS: Record<string, LucideIcon> = {
   bash: Terminal,
@@ -31,12 +37,6 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   python: Code,
   python3: Code,
 };
-
-// 日志派生的 markdown 不渲染活动链接：代码片段（如 DICT[key](arg)）会被
-// remarkGfm 解析成 [文本](href) 链接，点击会以相对 URL 导航破坏 SPA。
-function PlainTextLink({ children }: { children?: ReactNode }) {
-  return <span className="chat-plain-link">{children}</span>;
-}
 
 const TOOL_COLORS: Record<string, string> = {
   bash: '#62d884',
@@ -57,12 +57,9 @@ export function ChatRail() {
     setChatRunState, chatBusy, chatRunState, chatRouteMode,
     setChatRouteMode, chatSendInFlight,
     currentState,
-    toolEvents, streamingAssistantMessages,
-    activeMessageId, clearTimeline,
   } = useAppStore();
   const { sessionList, fetchSessionList, switchSession, createSession, sessionId: gwSessionId } = useGatewayStore();
   const t = useT();
-  const lang = useLang();
 
   const [input, setInput] = useState('');
   const [datasetStatus, setDatasetStatus] = useState('');
@@ -81,6 +78,12 @@ export function ChatRail() {
   const chatStickRef = useRef(true);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
+  // Steps appended to the live run grow the transcript without touching the
+  // message list; follow them too so the newest trace stays visible.
+  const liveStepCount = useGatewayStore((s) =>
+    s.parsedLog.runs.reduce((n, r) => n + r.steps.length, 0),
+  );
+
   const taskId = currentState?.task?.task_id || '';
   const datasetName = currentState?.task?.dataset_name || '';
 
@@ -88,7 +91,7 @@ export function ChatRail() {
     if (!chatStickRef.current) return;
     const container = messagesEndRef.current?.closest('.rail-messages');
     if (container) container.scrollTop = container.scrollHeight;
-  }, [chatMessages, toolEvents, streamingAssistantMessages]);
+  }, [chatMessages, liveStepCount]);
 
   useEffect(() => {
     if (datasetName) setDatasetStatus(datasetName);
@@ -103,18 +106,14 @@ export function ChatRail() {
   const handleSend = async () => {
     const text = input.trim();
     debug.log("ChatRail", "handleSend text=", text.slice(0, 60), "chatSessionId=", chatSessionId, "chatBusy=", chatBusy, "chatSendInFlight=", chatSendInFlight);
-    if (!text || chatBusy || chatRunState === 'cancelling' || chatSendInFlight) {
-      debug.log("ChatRail", "handleSend blocked: !text=", !text, "chatBusy=", chatBusy, "chatRunState=", chatRunState, "chatSendInFlight=", chatSendInFlight);
+    if (!text || chatBusy || chatSendInFlight) {
+      debug.log("ChatRail", "handleSend blocked: !text=", !text, "chatBusy=", chatBusy, "chatSendInFlight=", chatSendInFlight);
       return;
     }
-    // 点击后立即切到停止态（无过渡），不等会话创建/网络请求
-    useAppStore.setState({ chatSendInFlight: true, chatBusy: true, chatRunState: 'running' });
-
     let targetSessionId = chatSessionId;
     if (!targetSessionId) {
       const session = await createSession();
       if (!session) {
-        useAppStore.setState({ chatSendInFlight: false, chatBusy: false, chatRunState: 'idle' });
         debug.log("ChatRail", "failed to create gateway session");
         return;
       }
@@ -125,7 +124,6 @@ export function ChatRail() {
     setInput('');
 
     const idempotencyKey = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    useAppStore.getState().setActiveMessageId(idempotencyKey);
 
     const userMsg: ChatMessage = {
       message_id: idempotencyKey,
@@ -133,19 +131,15 @@ export function ChatRail() {
       content: text,
       created_at: new Date().toISOString(),
       route: chatRouteMode,
-      // Anchor: everything in the agent log before this point belongs to the
-      // previous run, so its reasoning blocks render above this message.
-      userWfStart: useGatewayStore.getState().parsedLog.segments.length,
     };
     addChatMessage(userMsg);
 
+    useAppStore.setState({ chatSendInFlight: true, chatBusy: true, chatRunState: 'running' });
     try {
       debug.log("ChatRail", "invoking agent on gateway session", targetSessionId, "mode=", taskMode);
       const { token } = useGatewayStore.getState();
       const task = await gatewayInvokeAgent(token, targetSessionId, text, taskMode);
       debug.log("ChatRail", "invoke response:", task);
-      // 首次提问即命名会话，列表立即显示新名字（与服务端规则一致）
-      useGatewayStore.getState().nameSessionFromQuery(targetSessionId, text);
       addChatMessage({
         message_id: `task-${task.id}`,
         role: 'platform',
@@ -184,8 +178,6 @@ export function ChatRail() {
     }
 
     setChatRunState('cancelling');
-    // 立即释放按钮为发送态；若停止失败，catch 中恢复运行态
-    setChatBusy(false);
     try {
       const task = await gatewayStopAgent(token, sessionId);
       debug.log('ChatRail', 'stop response:', task);
@@ -217,9 +209,6 @@ export function ChatRail() {
       if (session) {
         useAppStore.getState().setChatMessages([]);
         useAppStore.getState().setChatSessionId(sessionId);
-        // 切换后先回到 idle，等新会话的 run_state 事件再更新徽章，避免残留上一会话的“运行中”
-        useAppStore.getState().setChatBusy(false);
-        useAppStore.getState().setChatRunState('idle');
         useAppStore.getState().clearTimeline();
         setSessionsPanelOpen(false);
       }
@@ -282,8 +271,7 @@ export function ChatRail() {
   };
 
   const isCancelling = chatRunState === 'cancelling';
-  // cancelling 不算活动态：点击停止瞬间按钮即回到发送外观（取消期间由 disabled 兜底）
-  const isAgentActive = chatBusy || chatRunState === 'running';
+  const isAgentActive = chatBusy || chatRunState === 'running' || isCancelling;
   const actionState = isAgentActive ? 'stop' : 'send';
 
   return (
@@ -332,10 +320,10 @@ export function ChatRail() {
                     </span>
                   </div>
                   <div className="session-card-meta" style={{ fontSize: 11, color: 'var(--soft)', marginTop: 3 }}>
-                    <span title={s.name || undefined}>{s.name ? truncateText(s.name, 20) : t.common.newSession}</span>
+                    {s.sources?.length ?? 0} sources
                     {s.last_active && (
                       <span className="dim" style={{ marginLeft: 8 }}>
-                        {formatSessionTime(s.last_active, lang)}
+                        {formatLastActive(s.last_active)}
                       </span>
                     )}
                   </div>
@@ -351,83 +339,14 @@ export function ChatRail() {
               const el = e.currentTarget;
               chatStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
             }}>
-              {/* 按时间顺序交错渲染：每轮顺序固定为
-                  用户提问 → 任务/系统通知 → 解析块（reasoning，先于回答产生）
-                  → 答复 → 手动终止标记，下一轮提问出现在上一轮之后。 */}
-              {(() => {
-                // 按轮次分组渲染，轮内严格按真实时间线排列。
-                const runs: {
-                  user?: ChatMessage;
-                  msgs: ChatMessage[];
-                  stops: ChatMessage[];
-                  startAnchor?: number;
-                }[] = [];
-                // "Task started"/"Failed" 是本轮的预告型系统消息：invoke 发起即产生，
-                // 与提问的毫秒级时差不稳定（日志头可能被排队延迟写入），靠时间戳
-                // 排序会让它偶尔跳到提问上面。正常时序（排在提问后）直接挂入当前
-                // 轮立即渲染；仅当排在提问前（时间反转）才暂存、预挂到下一轮开头。
-                const pendingPlatform: ChatMessage[] = [];
-                for (const msg of chatMessages) {
-                  if (msg.role === 'user') {
-                    const run = { user: msg, msgs: [] as ChatMessage[], stops: [] as ChatMessage[], startAnchor: msg.userWfStart };
-                    run.msgs.push(...pendingPlatform.splice(0));
-                    runs.push(run);
-                  } else if (msg.message_id.startsWith('history-stop-')) {
-                    if (runs.length === 0) runs.push({ msgs: [], stops: [] });
-                    pendingPlatform.splice(0).forEach((p) => runs[runs.length - 1].msgs.push(p));
-                    runs[runs.length - 1].stops.push(msg);
-                  } else if (msg.role === 'platform') {
-                  pendingPlatform.push(msg);
-                } else {
-                    if (runs.length === 0) runs.push({ msgs: [], stops: [] });
-                    pendingPlatform.splice(0).forEach((p) => runs[runs.length - 1].msgs.push(p));
-                    runs[runs.length - 1].msgs.push(msg);
-                  }
-                }
-                // 尾部残余（运行中的 Task started 卡在最后一轮尾）兜底挂入。
-                if (pendingPlatform.length > 0) {
-                  if (runs.length === 0) runs.push({ msgs: [], stops: [] });
-                  runs[runs.length - 1].msgs.push(...pendingPlatform.splice(0));
-                }
-                const items: React.ReactNode[] = [];
-                runs.forEach((run, i) => {
-                  if (run.user) {
-                    items.push(<ChatMessageItem key={run.user.message_id} message={run.user} />);
-                  }
-                  // 平台/系统消息（Task started、Failed 等）在 agent 开始思考前产生，
-                  // 排在解析块之前。
-                  for (const m of run.msgs) {
-                    if (m.role !== 'assistant') items.push(<ChatMessageItem key={m.message_id} message={m} />);
-                  }
-                  const start = run.startAnchor ?? 0;
-                  if (i < runs.length - 1) {
-                    const end = runs[i + 1].startAnchor;
-                    if (end != null && end > start) {
-                      items.push(
-                        <AgentWorkflowBlocks key={`wf-hist-${i}`} startIndex={start} endIndex={end} historical />,
-                      );
-                    }
-                  } else {
-                    // 最后一个运行块实时渲染（也覆盖已结束的最后一轮）。
-                    items.push(<AgentWorkflowBlocks key="wf-live" startIndex={start} />);
-                  }
-                  // 回答在解析块（reasoning）之后，与其产生顺序一致。
-                  for (const m of run.msgs) {
-                    if (m.role === 'assistant') items.push(<ChatMessageItem key={m.message_id} message={m} />);
-                  }
-                  for (const s of run.stops) {
-                    items.push(<ChatMessageItem key={s.message_id} message={s} />);
-                  }
-                });
-                return items;
-              })()}
-
+              <ChatTranscript busy={chatBusy} />
               {chatBusy && chatMessages.length === 0 && (
                 <div className="agent-thinking">
                   <div className="typing-dots"><i /><i /><i /></div>
                   <span style={{ color: 'var(--muted)', fontSize: 13, fontFamily: 'var(--mono)' }}>Agent is thinking...</span>
                 </div>
               )}
+              {!chatBusy && chatMessages.length === 0 && <AgentEmptyState />}
               <div ref={messagesEndRef} />
             </div>
           </section>
@@ -449,8 +368,8 @@ export function ChatRail() {
                     <span>{taskId ? t.chatRail.ready : t.chatRail.noTask}</span>
                     <button className="task-setup-close" type="button" onClick={() => setTaskSetupOpen(false)}>&times;</button>
                   </div>
-                  {/* 上传不依赖任务：无任务时也显示进度与结果，避免“先生成任务”误导 */}
-                  <div className="task-setup-controls">
+                  <div className="task-setup-empty" hidden={!!taskId}>{t.chatRail.createTaskFirst}</div>
+                  <div className="task-setup-controls" hidden={!taskId}>
                     <div className="dataset-upload-progress" hidden={!datasetUploadProgress}>
                       <div className="dataset-upload-progress-head"><span>{datasetUploadLabel}</span><span className="dataset-upload-progress-stats"><span>{datasetUploadSpeed}</span><span>{datasetUploadPercent}</span></span></div>
                       <div className="dataset-upload-progress-track"><i style={{ width: `${datasetUploadBarWidth}%` }}></i></div>
@@ -533,267 +452,389 @@ export function ChatRail() {
   );
 }
 
-function AgentWorkflowBlocks({ startIndex = 0, endIndex, historical = false }: { startIndex?: number; endIndex?: number; historical?: boolean }) {
-  const { parsedLog, status, user, lines } = useGatewayStore();
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const stickRef = useRef(true);
+function formatLastActive(rfc3339: string): string {
+  try {
+    const d = new Date(rfc3339);
+    const now = Date.now();
+    const diff = now - d.getTime();
+    const sec = Math.floor(diff / 1000);
+    if (sec < 0) return 'just now';
+    if (sec < 60) return `${sec}s ago`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    const day = Math.floor(hr / 24);
+    return `${day}d ago`;
+  } catch {
+    return '';
+  }
+}
 
-  const headers = parsedLog.headers;
-  const task = getHeader(headers, 'Task');
-  const query = getHeader(headers, 'Query');
-  const finalStatus = getHeader(headers, 'Final Status');
-  const taskId = getHeader(headers, 'Task ID');
+// ── Transcript ─────────────────────────────────────────────────────────────
 
-  const allSegments = parsedLog.segments;
-  const segments = allSegments.slice(startIndex, endIndex);
+// Renders the merged chat message list, interleaving each run's execution
+// timeline (parsed from the agent log) right below its user message:
+//
+//   [user bubble]
+//   [run activity card — thoughts / tool calls / iterations]
+//   [assistant answer]
+//   [system notices]
+function ChatTranscript({ busy }: { busy: boolean }) {
+  const chatMessages = useAppStore((s) => s.chatMessages);
+  const runs = useGatewayStore((s) => s.parsedLog.runs);
 
-  useEffect(() => {
-    if (scrollRef.current && stickRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  return useMemo(() => {
+    const claimed = new Set<number>();
+    for (const m of chatMessages) {
+      if (m.role === 'user' && m.message_id.startsWith('history-') && m.runIndex != null) {
+        claimed.add(m.runIndex);
+      }
     }
-  }, [parsedLog]);
+    const latestRunIndex = runs.length > 0 ? runs[runs.length - 1].index : -1;
 
-  const hasContent = segments.length > 0 || (!historical && lines.length > 0);
+    const items: React.ReactNode[] = [];
+    chatMessages.forEach((msg, i) => {
+      const isLast = i === chatMessages.length - 1;
 
-  // 空块不渲染任何占位：聊天流里空解析块/“等待输出”提示会打乱轮次观感。
-  if (!hasContent) return null;
+      if (msg.role === 'user') {
+        let runIndex = msg.runIndex != null && runs[msg.runIndex] ? msg.runIndex : undefined;
+        if (runIndex == null) {
+          // Optimistic message: claim the first unclaimed run carrying the
+          // same query text (once its [user] line has been parsed). The
+          // backend embeds the route mode into the logged query.
+          const stripMode = (s: string) => s.replace(/^\[mode=\S+\]\s*/, '');
+          const found = runs.find(
+            (r) => !claimed.has(r.index) && stripMode(r.query) === msg.content,
+          );
+          if (found) runIndex = found.index;
+        }
+        if (runIndex != null) claimed.add(runIndex);
 
-  const body = (
-    <>
-      {/* Header summary strip */}
-      {!historical && (task || query) && (
-        <div className="agent-wf-header-strip">
-          <div className="agent-wf-header-pills">
-            {task && <span className="pill cyan" style={{ fontSize: 10 }}>{task}</span>}
-            {finalStatus && (
-              <span className={clsx('pill', finalStatus === 'completed' ? 'green' : finalStatus === 'killed' ? 'red' : 'yellow')} style={{ fontSize: 10 }}>
-                {finalStatus}
-              </span>
-            )}
-            {user && <span className="dim" style={{ fontSize: 10, fontFamily: 'var(--mono)' }}>@{user}</span>}
-            {taskId && <span className="dim" style={{ fontSize: 9, fontFamily: 'var(--mono)' }}>id {taskId.slice(-12)}</span>}
-          </div>
-          {query && (
-            <p className="agent-wf-query">{query}</p>
+        items.push(<UserMessage key={msg.message_id} message={msg} />);
+        const run = runIndex != null ? runs[runIndex] : undefined;
+        if (run) {
+          items.push(
+            <RunActivityCard
+              key={`run-${run.index}`}
+              run={run}
+              live={run.index === latestRunIndex}
+            />,
+          );
+        } else if (isLast && busy) {
+          items.push(<RunPendingCard key={`pending-${msg.message_id}`} />);
+        }
+        return;
+      }
+
+      if (msg.role === 'assistant') {
+        items.push(
+          <AssistantMessage key={msg.message_id} message={msg} streaming={busy && isLast} />,
+        );
+        return;
+      }
+
+      // platform
+      if (msg.message_id.startsWith('history-stop-')) {
+        items.push(
+          <div key={msg.message_id} className="chat-system-marker">
+            {msg.content}
+          </div>,
+        );
+        return;
+      }
+      // "Task started: <task-id>" notices become redundant once the run's
+      // timeline (which shows the task id) has been parsed from the log.
+      const taskMatch = msg.content.match(/^Task started:\s*(\S+)/);
+      if (taskMatch && runs.some((r) => r.taskId === taskMatch[1])) return;
+      items.push(<SystemNotice key={msg.message_id} message={msg} />);
+    });
+
+    return <>{items}</>;
+  }, [chatMessages, runs, busy]);
+}
+
+// ── Run activity card ──────────────────────────────────────────────────────
+
+type RunStatus = 'running' | 'done' | 'stopped' | 'idle';
+
+function runStatus(run: ParsedAgentRun, live: boolean): RunStatus {
+  if (run.stopMarker) return 'stopped';
+  if (run.answer.trim()) return 'done';
+  if (live) return 'running';
+  return 'idle';
+}
+
+function RunActivityCard({ run, live }: { run: ParsedAgentRun; live: boolean }) {
+  const t = useT();
+  const status = runStatus(run, live);
+  // Latest run starts expanded; older runs start collapsed. When a new run
+  // begins, the previously-live card auto-collapses (user can re-expand).
+  const [open, setOpen] = useState(live);
+  const prevLive = useRef(live);
+  useEffect(() => {
+    if (prevLive.current && !live) setOpen(false);
+    prevLive.current = live;
+  }, [live]);
+
+  // The timeline body is capped by max-height, so while the run is live the
+  // newest steps would fall below the fold. Follow the bottom (like the chat
+  // transcript) until the user scrolls up inside the timeline.
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const timelineStickRef = useRef(true);
+  useEffect(() => {
+    if (!open) return;
+    const el = timelineRef.current;
+    if (!el) return;
+    if (live && timelineStickRef.current) {
+      el.scrollTop = el.scrollHeight;
+    } else if (!live) {
+      // Freshly expanded history card: start at the top of the timeline.
+      el.scrollTop = 0;
+    }
+  }, [open, live, run.steps.length]);
+
+  const handleTimelineScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    timelineStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  };
+
+  const toolCount = run.steps.reduce((n, s) => (s.kind === 'tool' ? n + 1 : n), 0);
+  const duration = runDuration(run);
+
+  const statusLabel =
+    status === 'running' ? t.chatRail.running
+      : status === 'done' ? t.chatRail.done
+        : status === 'stopped' ? t.chatRail.stopped
+          : t.common.idle;
+
+  return (
+    <div className={clsx('run-activity', `is-${status}`, !open && 'is-closed')}>
+      <button className="run-activity-head" type="button" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <ChevronRight size={12} className={clsx('run-activity-chevron', open && 'expanded')} />
+        <span className="run-chip">{t.chatRail.runLabel} {run.index + 1}</span>
+        {run.taskId && <span className="run-task-id" title={run.taskId}>{run.taskId.replace(/^task-/, '').slice(-8)}</span>}
+        <span className="run-stats">
+          {toolCount > 0 && <span>{toolCount} {t.chatRail.toolCallsUnit}</span>}
+          {run.iteration && run.iteration.max > 0 && (
+            <span>{t.chatRail.iterationsShort} {run.iteration.current}/{run.iteration.max}</span>
+          )}
+          {duration && <span>{duration}</span>}
+        </span>
+        <span className={clsx('run-status-pill', `is-${status}`)}>
+          {status === 'running' && <span className="state-dot pulse" />}
+          {statusLabel}
+        </span>
+      </button>
+      {open && (
+        <div className="run-timeline" ref={timelineRef} onScroll={handleTimelineScroll}>
+          {run.steps.map((step, i) => (
+            <RunStep key={i} step={step} live={live && i === run.steps.length - 1} />
+          ))}
+          {status === 'running' && (
+            <div className="run-step is-waiting">
+              <span className="run-step-node"><Loader2 size={11} className="run-spin" /></span>
+              <span className="run-waiting-text">{t.chatRail.agentWorking}</span>
+            </div>
           )}
         </div>
       )}
-
-      {segments.map((seg, i) => (
-        <CollapsibleBlock key={startIndex + i} segment={seg} />
-      ))}
-
-      {/* Final summary (live block only — historical answers already show it) */}
-      {!historical && !endIndex && parsedLog.summary && (
-        <div className="agent-wf-summary">
-          <div className="chat-markdown" style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: PlainTextLink }}>{parsedLog.summary}</ReactMarkdown>
-          </div>
-        </div>
-      )}
-    </>
-  );
-
-  if (historical) {
-    return segments.length > 0 ? <div className="agent-workflow-blocks historical">{body}</div> : null;
-  }
-
-  return (
-    <div className="agent-workflow-blocks" ref={scrollRef} onScroll={(e) => {
-      const el = e.currentTarget;
-      stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-    }}>
-      {body}
     </div>
   );
 }
 
-function CollapsibleBlock({ segment }: { segment: ParsedSegment }) {
-  const [collapsed, setCollapsed] = useState(false);
+function RunStep({ step, live }: { step: ParsedAgentStep; live: boolean }) {
+  const t = useT();
 
-  if (segment.type === 'header') return null;
-
-  if (segment.type === 'tool_call' && segment.toolCall) {
-    const tc = segment.toolCall;
-    const IconComp = TOOL_ICONS[tc.tool] || Wrench;
-    const color = TOOL_COLORS[tc.tool] || '#aab7c6';
+  if (step.kind === 'iteration') {
     return (
-      <div className={clsx('agent-block agent-block-tool', collapsed && 'collapsed')} style={{ borderLeftColor: color }}>
-        <button className="agent-block-head" type="button" onClick={() => setCollapsed(!collapsed)}>
-          <ChevronRight size={12} className={clsx('agent-block-chevron', !collapsed && 'expanded')} />
-          <IconComp size={13} color={color} />
-          <span className="agent-block-title" style={{ color }}>{tc.tool}</span>
-          <span className="dim" style={{ fontSize: 9 }}>#{tc.index + 1}</span>
-        </button>
-        {!collapsed && (
-          <div className="agent-block-body">
-            <div className="agent-block-args">
-              {formatToolArgPreview(tc.tool, tc.args)}
-            </div>
-            {tc.thought && (
-              <div className="agent-block-thought">
-                <span className="agent-block-thought-label">reasoning</span>
-                <p>{tc.thought}</p>
-              </div>
-            )}
+      <div className="run-iter">
+        <span>{t.chatRail.iterationsShort} {step.current}/{step.max}</span>
+      </div>
+    );
+  }
+
+  if (step.kind === 'notice') {
+    return (
+      <div className="run-step is-notice">
+        <span className="run-step-node"><Wrench size={11} /></span>
+        <span className="run-notice-text">{step.text}</span>
+      </div>
+    );
+  }
+
+  if (step.kind === 'thought') {
+    return (
+      <div className="run-step is-thought">
+        <span className="run-step-node"><Brain size={11} /></span>
+        <div className="run-step-main">
+          <div className="run-step-head">
+            <span className="run-step-label">{t.chatRail.reasoning}</span>
+            {live && <span className="state-dot pulse" />}
           </div>
-        )}
+          <p className="run-thought-text">{step.text}</p>
+        </div>
       </div>
     );
   }
 
-  if (segment.type === 'tool_output' && segment.text.trim()) {
-    return (
-      <div className={clsx('agent-block agent-block-output', collapsed && 'collapsed')}>
-        <button className="agent-block-head agent-block-head-output" type="button" onClick={() => setCollapsed(!collapsed)}>
-          <ChevronRight size={12} className={clsx('agent-block-chevron', !collapsed && 'expanded')} />
-          <span className="agent-block-title dim" style={{ fontSize: 10 }}>output</span>
-        </button>
-        {!collapsed && <ToolOutput text={segment.text} />}
-      </div>
-    );
-  }
-
-  if (segment.type === 'reasoning' && segment.text.trim()) {
-    return (
-      <div className={clsx('agent-block agent-block-reasoning', collapsed && 'collapsed')}>
-        <button className="agent-block-head agent-block-head-reasoning" type="button" onClick={() => setCollapsed(!collapsed)}>
-          <ChevronRight size={12} className={clsx('agent-block-chevron', !collapsed && 'expanded')} />
-          <span className="agent-block-title dim" style={{ fontSize: 10 }}>reasoning</span>
-        </button>
-        {!collapsed && (
-          <div className="agent-block-body">
-            <div className="chat-markdown" style={{ fontSize: 12, color: 'var(--soft)', lineHeight: 1.5 }}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: PlainTextLink }}>{segment.text}</ReactMarkdown>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (segment.type === 'summary' || (segment.type === 'summary_marker' && segment.text.trim())) {
-    return <div className="agent-block-divider" />;
-  }
-
-  return null;
-}
-
-function ToolOutput({ text }: { text: string }) {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-
-  const isCode = /^[\s]*[$>]/m.test(trimmed) || /^(import |from |def |class |n_)/m.test(trimmed);
-
-  if (isCode && trimmed.length < 5000) {
-    return (
-      <div className="agent-block-output-code">
-        <SyntaxHighlighter
-          language="bash"
-          style={oneDark}
-          customStyle={{
-            margin: 0,
-            padding: '6px 10px',
-            fontSize: 11,
-            background: '#0e1318',
-            borderRadius: 4,
-            border: '1px solid rgba(255,255,255,0.04)',
-          }}
-          codeTagProps={{ style: { fontFamily: 'var(--mono)' } }}
-        >
-          {trimmed}
-        </SyntaxHighlighter>
-      </div>
-    );
-  }
+  // tool step (all other kinds returned above)
+  const IconComp = TOOL_ICONS[step.tool] || Wrench;
+  const color = TOOL_COLORS[step.tool] || '#aab7c6';
+  const status = step.ok === null ? 'running' : step.ok ? 'ok' : 'err';
+  const args = formatToolArgPreview(step.tool, step.args) || step.argsRaw;
+  const duration = step.resultDetail.match(/\[(\d+(?:\.\d+)?)s/)?.[1];
+  const truncCount = step.output.filter(isOutputTruncationMarker).length;
 
   return (
-    <pre className="agent-block-output-text">
-      {trimmed.length > 2000 ? trimmed.slice(0, 2000) + '\n… (truncated)' : trimmed}
-    </pre>
+    <div className={clsx('run-step', 'is-tool', `is-${status}`)}>
+      <span className="run-step-node" style={{ color, borderColor: color }}>
+        <IconComp size={11} />
+      </span>
+      <div className="run-step-main">
+        <div className="run-step-head">
+          <span className="run-tool-name" style={{ color }}>{step.tool}</span>
+          {args && <code className="run-tool-args" title={args}>{args}</code>}
+          <span className={clsx('run-tool-status', `is-${status}`)}>
+            {status === 'running' && <Loader2 size={11} className="run-spin" />}
+            {status === 'ok' && <Check size={11} />}
+            {status === 'err' && <X size={11} />}
+            {duration && <em>{duration}s</em>}
+          </span>
+        </div>
+        {step.thought && <p className="run-thought-inline">{step.thought}</p>}
+        {step.ok === false && step.resultDetail && (
+          <p className="run-tool-error">{step.resultDetail}</p>
+        )}
+        {step.output.length > 0 && (
+          <details className="run-step-output">
+            <summary>
+              {t.chatRail.output}
+              <em>{step.output.length}</em>
+              {truncCount > 0 && <span className="run-output-trunc-badge">truncated</span>}
+            </summary>
+            <pre className="run-output-pre">
+              {step.output.map((line, i) => (
+                <span key={i} className={clsx(isOutputTruncationMarker(line) && 'run-output-trunc')}>
+                  {line + '\n'}
+                </span>
+              ))}
+            </pre>
+          </details>
+        )}
+      </div>
+    </div>
   );
 }
 
-function ChatMessageItem({ message }: { message: ChatMessage }) {
+function RunPendingCard() {
   const t = useT();
-  const [showTrace, setShowTrace] = useState(true);
-  const { toolEvents, streamingAssistantMessages } = useAppStore();
-
-  const relevantTools = toolEvents.filter((te) => {
-    return toolEvents.length > 0;
-  });
-
-  const isStreaming = message.role === 'user' &&
-    useAppStore.getState().chatBusy;
-
-  const streamContent = streamingAssistantMessages.get(message.message_id);
-  const displayContent = message.content || streamContent || '';
-
-  // 手动终止标记：单独一行居中小字，不作为普通消息气泡渲染。
-  if (message.message_id.startsWith('history-stop-')) {
-    return (
-      <div className="dim" style={{ fontSize: 11, textAlign: 'center', padding: '2px 0', letterSpacing: 0.3 }}>
-        {message.content}
+  return (
+    <div className="run-activity is-running">
+      <div className="run-activity-head">
+        <span className="run-chip">{t.chatRail.runLabel}</span>
+        <span className="run-status-pill is-running">
+          <span className="state-dot pulse" />
+          {t.chatRail.agentStarting}
+        </span>
       </div>
-    );
-  }
+    </div>
+  );
+}
+
+function AgentEmptyState() {
+  const t = useT();
+  const status = useGatewayStore((s) => s.status);
+  const connected = status === 'connected';
+  return (
+    <div className="agent-empty-state">
+      <span className={clsx('agent-empty-icon', connected && 'is-ready')}>
+        <Sparkles size={18} />
+      </span>
+      <strong>{t.chatRail.emptyTitle}</strong>
+      <p>{connected ? t.chatRail.emptyHint : t.chatRail.emptyOfflineHint}</p>
+    </div>
+  );
+}
+
+// ── Message bubbles ────────────────────────────────────────────────────────
+
+function messageTime(created_at: string): string {
+  if (!created_at) return '';
+  const d = new Date(created_at);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function UserMessage({ message }: { message: ChatMessage }) {
+  const t = useT();
+  const time = messageTime(message.created_at);
+  return (
+    <div className="message user">
+      <div className="message-meta">
+        <strong>{t.chatRail.you}</strong>
+        {time && <span className="msg-time">{time}</span>}
+      </div>
+      <div className="message-body">
+        <div className="user-text">{message.content}</div>
+      </div>
+    </div>
+  );
+}
+
+function AssistantMessage({ message, streaming }: { message: ChatMessage; streaming: boolean }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  const time = messageTime(message.created_at);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(message.content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  };
 
   return (
-    <div className={clsx('message', message.role)}>
-      <strong>{message.role === 'user' ? t.chatRail.you : message.role === 'platform' ? t.chatRail.system : t.chatRail.agent}</strong>
-      <div className="message-body">
-        {displayContent ? (
-          <div className="chat-markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: PlainTextLink }}>{displayContent}</ReactMarkdown>
-            {useAppStore.getState().chatBusy && message.role === 'user' && !message.content && (
-              <span className="stream-cursor" />
-            )}
-          </div>
-        ) : message.role === 'assistant' && useAppStore.getState().chatBusy ? (
-          <div className="chat-markdown" style={{ opacity: 0.5 }}>
-            <em>▊</em>
-          </div>
-        ) : null}
-
-        {message.role === 'user' && useAppStore.getState().chatBusy && relevantTools.length > 0 && (
-          <div className="tool-trace" style={{ marginTop: 8 }}>
-            <details open={showTrace}>
-              <summary onClick={() => setShowTrace(!showTrace)}>
-                <span className="tool-trace-title">{t.chatRail.toolTrace} ({relevantTools.length})</span>
-                <span className="tool-trace-meta">{relevantTools.filter((e) => e.status === 'running').length > 0 ? t.chatRail.running : t.chatRail.done}</span>
-              </summary>
-              <div className="tool-step-list">
-                {relevantTools.map((event, i) => (
-                  <div key={event.event_id || i} className={clsx('tool-step', event.status === 'ok' && 'ok')}>
-                    <div className="tool-step-dot" />
-                    <div className="tool-step-main">
-                      <div className="tool-step-head">
-                        <strong>{event.name || event.type || 'tool'}</strong>
-                        <span>{event.status === 'running' ? t.chatRail.running : event.status === 'ok' ? 'OK' : event.status}</span>
-                      </div>
-                      {event.message && <div className="tool-step-meta">{event.message}</div>}
-                      {event.steps && event.steps.length > 0 && (
-                        <div className="tool-step-detail">
-                          {event.steps.map((step: ChatToolStep) => (
-                            <div key={step.step_id} className={clsx('tool-step-sub', step.status)}>
-                              <span className="tool-step-sub-action">{step.action}</span>
-                              <span className="tool-step-sub-content">{step.content}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </details>
-          </div>
-        )}
-
-        {message.decision && (
-          <DecisionCardView decision={message.decision} />
-        )}
+    <div className="message assistant">
+      <div className="message-meta">
+        <strong>{t.chatRail.agent}</strong>
+        {time && <span className="msg-time">{time}</span>}
+        <button
+          className={clsx('msg-copy', copied && 'ok')}
+          type="button"
+          onClick={handleCopy}
+          title={copied ? t.chatRail.copied : t.chatRail.copyAnswer}
+          aria-label={t.chatRail.copyAnswer}
+        >
+          {copied ? <Check size={12} strokeWidth={2.5} /> : <Copy size={12} />}
+        </button>
       </div>
+      <div className="message-body">
+        <div className="chat-markdown">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {sanitizeReportMarkdown(message.content)}
+          </ReactMarkdown>
+          {streaming && <span className="stream-cursor" />}
+        </div>
+        {message.decision && <DecisionCardView decision={message.decision} />}
+      </div>
+    </div>
+  );
+}
+
+function SystemNotice({ message }: { message: ChatMessage }) {
+  const isError = /^Failed:/i.test(message.content);
+  const taskMatch = message.content.match(/^Task started:\s*(\S+)/);
+  return (
+    <div className={clsx('chat-system-chip', isError && 'is-error')}>
+      {taskMatch ? (
+        <>
+          <span className="chat-system-chip-label">task</span>
+          <code>{taskMatch[1].replace(/^task-/, '').slice(-12)}</code>
+        </>
+      ) : (
+        <span>{message.content}</span>
+      )}
     </div>
   );
 }

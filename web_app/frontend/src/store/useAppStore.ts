@@ -5,20 +5,12 @@ import type {
   FrontTab,
   L1Tab,
   Theme,
-  PanelLayout,
   FontSize,
-  AgentMapBackground,
   L1Scope,
   ChatRunState,
   ChatRouteMode,
   ChatMessage,
-  ChatSession,
   ChatToolEvent,
-  BackendHealth,
-  RuntimeSettings,
-  AgentMapModel,
-  WorkspaceFile,
-  DecisionCard,
 } from '../types';
 import type { Lang } from '../i18n/translations';
 import * as api from '../api/client';
@@ -41,14 +33,14 @@ type ReportListItem = {
 interface AppState {
   // Theme & layout
   theme: Theme;
-  panelLayout: PanelLayout;
   fontSize: FontSize;
-  agentMapBackground: AgentMapBackground;
+  // Agent Map background image file name from <program dir>/themes/backgrounds
+  // ('' = bundled default background).
+  agentMapBackground: string;
   language: Lang;
   setTheme: (theme: Theme) => void;
-  setPanelLayout: (layout: PanelLayout) => void;
   setFontSize: (size: FontSize) => void;
-  setAgentMapBackground: (background: AgentMapBackground) => void;
+  setAgentMapBackground: (name: string) => void;
   setLanguage: (lang: Lang) => void;
 
   // View
@@ -80,7 +72,6 @@ interface AppState {
 
   // Chat
   chatSessionId: string;
-  chatSessionTaskRoot: string;
   chatMessages: ChatMessage[];
   chatBusy: boolean;
   chatQueueDepth: number;
@@ -89,44 +80,24 @@ interface AppState {
   chatRunState: ChatRunState;
   chatRouteMode: ChatRouteMode;
   chatProgressLabel: string;
-  chatRunStartedAt: number;
   toolEvents: ChatToolEvent[];
-  sessions: ChatSession[];
   sessionsPanelOpen: boolean;
-  eventSource: EventSource | null;
-  lastSeq: number;
-  streamingAssistantMessages: Map<string, string>;
-  pendingAssistantMessages: Map<string, string>;
-  agentMapSelectionLocked: boolean;
-  agentMapReportOpen: boolean;
   agentPositionId: string;
 
-  activeMessageId: string;
   clearTimeline: () => void;
-  setActiveMessageId: (id: string) => void;
-  applyStateUpdatePatch: (data: Record<string, unknown>) => void;
-  addWorkspaceFile: (file: WorkspaceFile) => void;
 
   setChatSessionId: (id: string) => void;
   setChatMessages: (messages: ChatMessage[]) => void;
   addChatMessage: (message: ChatMessage) => void;
-  updateAssistantMessage: (messageId: string, content: string) => void;
-  setStreamingAssistantContent: (msgId: string, content: string) => void;
   setChatBusy: (busy: boolean) => void;
   setChatRunState: (state: ChatRunState) => void;
   setChatRouteMode: (mode: ChatRouteMode) => void;
-  setSessions: (sessions: ChatSession[]) => void;
   setSessionsPanelOpen: (open: boolean) => void;
-  setEventSource: (es: EventSource | null) => void;
 
-  // Settings & health
-  backendHealth: BackendHealth | null;
-  runtimeSettings: RuntimeSettings | null;
+  // Settings
   settingsPanelOpen: boolean;
   statePanelOpen: boolean;
 
-  fetchHealth: () => Promise<void>;
-  fetchSettings: () => Promise<void>;
   setSettingsPanelOpen: (open: boolean) => void;
   setStatePanelOpen: (open: boolean) => void;
 
@@ -139,22 +110,11 @@ interface AppState {
   setMonitorCollapsed: (collapsed: boolean) => void;
 
   // Workspace
-  workspaceFiles: WorkspaceFile[];
-  workspaceFilesSignature: string;
   selectedWorkspacePath: string;
-  selectedLogPath: string;
   workspaceTreeCollapsed: boolean;
-  logFiles: { name: string; path: string; size: number }[];
-  logEntries: string[];
 
-  fetchWorkspaceFiles: () => Promise<void>;
-  setWorkspaceFiles: (files: WorkspaceFile[], signature: string) => void;
-  fetchLogFiles: () => Promise<void>;
   setSelectedWorkspacePath: (path: string) => void;
-  setSelectedLogPath: (path: string) => void;
   setWorkspaceTreeCollapsed: (collapsed: boolean) => void;
-  appendLogEntry: (line: string) => void;
-  clearLogEntries: () => void;
 
   // Reports (recursively scan task_root for .md files)
   reportList: ReportListItem[];
@@ -165,52 +125,44 @@ interface AppState {
   clearReportState: () => void;
 
   // Agent map
-  agentMapModel: AgentMapModel | null;
   selectedAgentWorkerId: string;
   selectAgentMapWorker: (workerId: string) => void;
-  setAgentMapReportOpen: (open: boolean) => void;
-  setAgentPositionId: (id: string) => void;
-  randomizeAgentPosition: () => void;
 
   // Caches
-  artifactTextCache: Map<string, string>;
-  reportHtmlCache: Map<string, string>;
   workspaceFileTextCache: Map<string, { content: string; contentType: string; encoding: string }>;
-  logFileTextCache: Map<string, string>;
-  clearCaches: () => void;
 
   // Derived
   activeTaskRoot: () => string;
-  currentL1Node: () => import('../types').NodeInfo | null;
+}
+
+// Reads the persisted Agent Map background. Legacy built-in values
+// ('default' / 'lab') migrate to '' (bundled default); anything else is a
+// file name from <program dir>/themes/backgrounds.
+function storedAgentMapBackground(): string {
+  const value = localStorage.getItem('scienceflow.agentMapBackground') || '';
+  return value === 'default' || value === 'lab' ? '' : value;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
   // Theme & layout
   theme: (localStorage.getItem('scienceflow.theme') as Theme) || 'scienceflow-dark',
-  panelLayout: (localStorage.getItem('scienceflow.panelLayout') as PanelLayout) || 'intelligence-left',
   fontSize: (localStorage.getItem('scienceflow.fontSize') as FontSize) || 'default',
-  agentMapBackground: (localStorage.getItem('scienceflow.agentMapBackground') as AgentMapBackground) || 'default',
-  language: (localStorage.getItem('scienceflow.language') as Lang) || 'en-US',
+  agentMapBackground: storedAgentMapBackground(),
+  language: (localStorage.getItem('scienceflow.language') as Lang) || 'zh-CN',
 
   setTheme: (theme) => {
     localStorage.setItem('scienceflow.theme', theme);
     document.documentElement.dataset.theme = theme;
     set({ theme });
   },
-  setPanelLayout: (layout) => {
-    localStorage.setItem('scienceflow.panelLayout', layout);
-    document.documentElement.dataset.panelLayout = layout;
-    set({ panelLayout: layout });
-  },
   setFontSize: (size) => {
     localStorage.setItem('scienceflow.fontSize', size);
     document.documentElement.dataset.fontSize = size;
     set({ fontSize: size });
   },
-  setAgentMapBackground: (background) => {
-    localStorage.setItem('scienceflow.agentMapBackground', background);
-    document.documentElement.dataset.agentMapBackground = background;
-    set({ agentMapBackground: background });
+  setAgentMapBackground: (name) => {
+    localStorage.setItem('scienceflow.agentMapBackground', name);
+    set({ agentMapBackground: name });
   },
   setLanguage: (lang) => {
     localStorage.setItem('scienceflow.language', lang);
@@ -289,7 +241,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Chat
   chatSessionId: '',
-  chatSessionTaskRoot: '',
   chatMessages: [],
   chatBusy: false,
   chatQueueDepth: 0,
@@ -298,62 +249,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   chatRunState: 'idle',
   chatRouteMode: 'chat',
   chatProgressLabel: '',
-  chatRunStartedAt: 0,
   toolEvents: [],
-  sessions: [],
   sessionsPanelOpen: false,
-  eventSource: null,
-  lastSeq: 0,
-  streamingAssistantMessages: new Map(),
-  pendingAssistantMessages: new Map(),
-  agentMapSelectionLocked: false,
-  agentMapReportOpen: false,
   agentPositionId: 'coordinator',
 
-  activeMessageId: '',
-
-  setChatSessionId: (id) => set({ chatSessionId: id, ...(id ? {} : { workspaceFiles: [], workspaceFilesSignature: '', selectedWorkspacePath: '' }) }),
+  setChatSessionId: (id) => set({ chatSessionId: id, ...(id ? {} : { selectedWorkspacePath: '' }) }),
   setChatMessages: (messages) => set({ chatMessages: messages }),
   addChatMessage: (message) => set((s) => ({ chatMessages: [...s.chatMessages, message] })),
-  updateAssistantMessage: (messageId, content) => {
-    set((s) => ({
-      chatMessages: s.chatMessages.map((m) =>
-        m.message_id === messageId ? { ...m, content } : m
-      ),
-    }));
-  },
-  setStreamingAssistantContent: (msgId, content) => {
-    set((s) => {
-      const next = new Map(s.streamingAssistantMessages);
-      next.set(msgId, content);
-      return { streamingAssistantMessages: next };
-    });
-  },
   setChatBusy: (busy) => set({ chatBusy: busy }),
   setChatRunState: (state) => set({ chatRunState: state }),
   setChatRouteMode: (mode) => set({ chatRouteMode: mode }),
-  setSessions: (sessions) => set({ sessions }),
   setSessionsPanelOpen: (open) => set({ sessionsPanelOpen: open }),
-  setEventSource: (es) => set({ eventSource: es }),
 
-  // Settings & health
-  backendHealth: null,
-  runtimeSettings: null,
+  // Settings
   settingsPanelOpen: false,
   statePanelOpen: false,
 
-  fetchHealth: async () => {
-    try {
-      const health = await api.fetchHealth();
-      set({ backendHealth: health });
-    } catch { /* silent */ }
-  },
-  fetchSettings: async () => {
-    try {
-      const settings = await api.fetchSettings();
-      set({ runtimeSettings: settings });
-    } catch { /* silent */ }
-  },
   setSettingsPanelOpen: (open) => set({ settingsPanelOpen: open }),
   setStatePanelOpen: (open) => set({ statePanelOpen: open }),
 
@@ -366,44 +277,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   setMonitorCollapsed: (collapsed) => set({ monitorCollapsed: collapsed }),
 
   // Workspace
-  workspaceFiles: [],
-  workspaceFilesSignature: '',
   selectedWorkspacePath: '',
-  selectedLogPath: '',
   workspaceTreeCollapsed: true,
-  logFiles: [],
-  logEntries: [],
 
-  fetchWorkspaceFiles: async () => {
-    try {
-      const state = get();
-      if (!state.chatSessionId) {
-        set({ workspaceFiles: [], workspaceFilesSignature: '' });
-        return;
-      }
-      const result = await api.fetchWorkspaceFiles(
-        state.activeTaskRoot() || undefined,
-        state.chatSessionId || undefined,
-      );
-      set({ workspaceFiles: result.files || [], workspaceFilesSignature: result.signature || '' });
-    } catch { /* silent */ }
-  },
-  setWorkspaceFiles: (files, signature) => set({ workspaceFiles: files, workspaceFilesSignature: signature }),
-  fetchLogFiles: async () => {
-    try {
-      const result = await api.fetchLogs(get().activeTaskRoot() || undefined);
-      set({ logFiles: result.files || [] });
-    } catch { /* silent */ }
-  },
   setSelectedWorkspacePath: (path) => set({ selectedWorkspacePath: path }),
-  setSelectedLogPath: (path) => set({ selectedLogPath: path }),
   setWorkspaceTreeCollapsed: (collapsed) => set({ workspaceTreeCollapsed: collapsed }),
-  appendLogEntry: (line) =>
-    set((s) => {
-      const next = [...s.logEntries, line];
-      return { logEntries: next.length > 2000 ? next.slice(-2000) : next };
-    }),
-  clearLogEntries: () => set({ logEntries: [] }),
 
   // Reports (current session workspace Markdown files)
   reportList: [] as ReportListItem[],
@@ -490,61 +368,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearReportState: () => set({ reportList: [], selectedReportPath: '', reportContent: '' }),
 
   // Agent map
-  agentMapModel: null,
   selectedAgentWorkerId: '',
   selectAgentMapWorker: (workerId) => set({ selectedAgentWorkerId: workerId }),
-  setAgentMapReportOpen: (open) => set({ agentMapReportOpen: open }),
-  setAgentPositionId: (id) => set({ agentPositionId: id }),
 
-  // Position waypoints for agent map actor movement
-  randomizeAgentPosition: () => {
-    const WAYPOINTS = ['coordinator', 'worker0', 'worker1', 'worker2', 'worker3'];
-    const current = get().agentPositionId;
-    const others = WAYPOINTS.filter((w) => w !== current);
-    const next = others[Math.floor(Math.random() * others.length)] || WAYPOINTS[0];
-    set({ agentPositionId: next });
-  },
-
-  // Simple state
-  clearTimeline: () => set({ activeMessageId: '', toolEvents: [], streamingAssistantMessages: new Map() }),
-  setActiveMessageId: (id) => set({ activeMessageId: id }),
-
-  applyStateUpdatePatch: (data) => {
-    const state = get().currentState;
-    if (!state) return;
-    const updated = { ...state };
-    for (const [path, value] of Object.entries(data)) {
-      _deepSet(updated as Record<string, unknown>, path, value);
-    }
-    set({ currentState: updated });
-  },
-
-  addWorkspaceFile: (file) => {
-    set((s) => ({ workspaceFiles: [...s.workspaceFiles, file] }));
-  },
+  clearTimeline: () => set({ toolEvents: [] }),
 
   // Caches
-  artifactTextCache: new Map(),
-  reportHtmlCache: new Map(),
   workspaceFileTextCache: new Map(),
-  logFileTextCache: new Map(),
-  clearCaches: () => set({
-    artifactTextCache: new Map(),
-    reportHtmlCache: new Map(),
-    workspaceFileTextCache: new Map(),
-    logFileTextCache: new Map(),
-  }),
 
   // Derived
   activeTaskRoot: () => {
     const state = get().currentState;
     return state?.task?.task_root || '';
-  },
-  currentL1Node: () => {
-    const state = get().currentState;
-    if (get().l1Scope !== 'node' || !state) return null;
-    const nodes = state.nodes || [];
-    return nodes[get().selectedNodeIndex] || null;
   },
 }));
 
@@ -557,30 +392,4 @@ if (typeof window !== 'undefined') {
 async function downloadGatewayFileText(token: string, sessionId: string, path: string): Promise<string> {
   const blob = await workspaceDownloadFile(token, sessionId, path);
   return blob.text();
-}
-
-function _deepSet(obj: Record<string, unknown>, path: string, value: unknown) {
-  const keys = path.split('.');
-  let current: Record<string, unknown> = obj;
-  for (let i = 0; i < keys.length - 1; i++) {
-    const k = keys[i];
-    if (k === '+' || k === '-') continue;
-    if (!(k in current) || typeof current[k] !== 'object' || current[k] === null) {
-      current[k] = {};
-    }
-    current = current[k] as Record<string, unknown>;
-  }
-  const lastKey = keys[keys.length - 1];
-  if (lastKey === '+' || lastKey === '-') return;
-  const prefix = path.startsWith('+') ? 'append' : path.startsWith('-') ? 'remove' : 'set';
-  if (prefix === 'set') {
-    current[lastKey] = value;
-  } else if (prefix === 'append' && Array.isArray(current[lastKey])) {
-    const arr = current[lastKey] as unknown[];
-    if (Array.isArray(value)) {
-      (current[lastKey] as unknown[]) = [...arr, ...value];
-    } else {
-      (current[lastKey] as unknown[]) = [...arr, value];
-    }
-  }
 }

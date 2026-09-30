@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { Events } from '@wailsio/runtime';
 import { useGatewayStore } from '../store/useGatewayStore';
 import type { FileTreeEvent } from '../types';
 
@@ -13,7 +13,8 @@ import type { FileTreeEvent } from '../types';
 // If overflow is true, we fall back to a full REST re-fetch via GET /sessions/{id}/files.
 export function useFileSync() {
   useEffect(() => {
-    const off = EventsOn('gateway-file', (e: FileTreeEvent) => {
+    const off = Events.On('gateway-file', (ev) => {
+      const e = ev.data as FileTreeEvent;
       const store = useGatewayStore.getState();
       if (e.session_id && store.sessionId && e.session_id !== store.sessionId) return;
 

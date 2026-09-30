@@ -13,6 +13,7 @@ import {
   GatewayInvokeAgent,
   GatewayAgentStatus,
   GatewayStopAgent,
+  GatewayTestConnection,
   GatewayFetchFiles,
   GatewayFetchMonitor,
   GatewayListModels,
@@ -26,8 +27,8 @@ import {
   WorkspaceUploadFiles,
   SetGatewayURL,
   GetSystemStats,
-} from '../../wailsjs/go/main/App';
-import { main as wailsModels } from '../../wailsjs/go/models';
+} from '../../bindings/scienceflow/app';
+import * as wailsModels from '../../bindings/scienceflow/models';
 import type { FileTreeResponse, FileNode } from '../types';
 
 export interface FilePayloadResult {
@@ -65,8 +66,8 @@ export interface GatewaySession {
   last_active_nanos?: number;
   agent?: {
     status: string;
-    task?: GatewayTaskSnapshot;
-  };
+    task?: GatewayTaskSnapshot | null;
+  } | null;
 }
 
 export interface GatewaySessionsResponse {
@@ -119,6 +120,14 @@ export interface GatewayBackfillDoneEvent {
 
 export function gatewayLogin(userName: string, password: string): Promise<GatewayLoginResult> {
   return GatewayLogin({ user_name: userName, password });
+}
+
+// gatewayTestConnection probes the gateway server itself (GET /healthz); it
+// does not touch the ScienceFlow backend behind the gateway.
+export type GatewayHealth = wailsModels.GatewayHealth;
+
+export function gatewayTestConnection(): Promise<GatewayHealth> {
+  return GatewayTestConnection();
 }
 
 export function gatewayListSources(token: string): Promise<GatewaySourceInfo[]> {
@@ -292,6 +301,13 @@ function fileToBase64(file: File): Promise<string> {
 export async function workspaceDownloadFile(token: string, sessionId: string, path: string): Promise<Blob> {
   const payload = await WorkspaceDownload(token, sessionId, path, false);
   return base64ToBlob(payload.data, payload.contentType);
+}
+
+// workspaceReadText downloads a workspace file and decodes it as UTF-8 text.
+// Used by the monitor to parse telemetry files (.logs/*.jsonl, *.csv).
+export async function workspaceReadText(token: string, sessionId: string, path: string): Promise<string> {
+  const blob = await workspaceDownloadFile(token, sessionId, path);
+  return blob.text();
 }
 
 export async function workspaceDownloadDir(token: string, sessionId: string, path: string): Promise<Blob> {

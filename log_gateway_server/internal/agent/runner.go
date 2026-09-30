@@ -51,6 +51,19 @@ func NormalizeMode(mode string) string {
 // RAW.log files (main.go wires WatchFile/UnwatchFile under this name).
 const RawLogSource = "agent-logs"
 
+// RunDirName is the per-session execution workspace directory the gateway's
+// manifest resolves to (workspace_base/run_id/exp_id with exp_id="run").
+const RunDirName = "run"
+
+// SessionInteractionLogPath returns the interaction transcript the installed
+// scienceflow CLI writes for a session workspace directory
+// (<sessionDir>/run/.logs/interaction.log). In --plain mode the REPL mirrors
+// the full interaction (user/assistant/tool turns) into this file instead of
+// stdout, so the gateway tails it alongside RAW.log.
+func SessionInteractionLogPath(sessionDir string) string {
+	return filepath.Join(sessionDir, RunDirName, ".logs", "interaction.log")
+}
+
 // Task is one agent invocation bound to a (user, session) pair.
 type Task struct {
 	ID        string
@@ -74,6 +87,12 @@ type Task struct {
 	outBuf     *ringBuffer
 	rawLog     *os.File // append-only mirror of agent stdout, tailed by the gateway's own SSE
 	RawLogPath string   // public path of RAW.log for API responses
+}
+
+// InteractionLogPath returns the in-workspace interaction transcript of this
+// task (<workspace>/run/.logs/interaction.log), tailed by the gateway's SSE.
+func (t *Task) InteractionLogPath() string {
+	return filepath.Join(t.Workspace, ".logs", "interaction.log")
 }
 
 func (t *Task) Status() TaskStatus {
@@ -415,6 +434,20 @@ func killProcessTree(cmd *exec.Cmd) error {
 	return cmd.Process.Kill()
 }
 
+// workDir resolves the subprocess working directory. When agent.repo_root is
+// configured, it is used as-is so the in-repo scienceflow package shadows
+// site-packages (repo mode). When empty (installed-package mode), the task's
+// run workspace is used instead — crucially NOT the ScienceFlow source repo —
+// so `python -m scienceflow.cli` resolves the pip-installed module. The
+// workspace is created up front because exec.Cmd requires an existing cwd.
+func (r *Runner) workDir(t *Task) string {
+	if root := strings.TrimSpace(r.cfg.RepoRoot); root != "" {
+		return root
+	}
+	_ = os.MkdirAll(t.Workspace, 0o755)
+	return t.Workspace
+}
+
 // timeoutFor returns the wall-clock cap for a task of the given mode: heavy
 // tasks use agent.heavy_timeout when set, everything else agent.timeout.
 func (r *Runner) timeoutFor(mode string) time.Duration {
@@ -546,7 +579,7 @@ func (r *Runner) runTask(t *Task) {
 
 	args := append(argv[1:], r.buildArgs(t)...)
 	cmd := exec.Command(argv[0], args...)
-	cmd.Dir = r.cfg.RepoRoot
+	cmd.Dir = r.workDir(t)
 	cmd.Env = r.buildEnv(t)
 
 	// Open RAW.log in append mode so multiple invocations of the same session
@@ -813,22 +846,23 @@ func (r *Runner) buildEnv(t *Task) []string {
 		"SCIFLOW_TASK_WORKSPACE="+t.Workspace,
 	)
 	if r.models != nil {
-		// Stage models: per-session stage override, falling back to the
-		// session's main model and then the globally active model. Each
-		// stage uses its resolved entry's model name, api key and endpoint.
-		if code, ok := r.models.StageForSession(t.Session, "code"); ok {
-			env = append(env,
-				"CODE_MODEL="+code.ModelName,
-				"CODE_API_KEY="+code.APIKey,
-				"CODE_BASE_URL="+code.APIURL,
-			)
-		}
-		if feedback, ok := r.models.StageForSession(t.Session, "feedback"); ok {
-			env = append(env,
-				"FEEDBACK_MODEL="+feedback.ModelName,
-				"FEEDBACK_API_KEY="+feedback.APIKey,
-				"FEEDBACK_BASE_URL="+feedback.APIURL,
-			)
+		// Stage models: the installed CLI ignores CODE_*/FEEDBACK_* env vars
+		// and resolves endpoints from the model registry instead. When a
+		// session overrides the code/feedback stages, materialize a per-task
+		// registry copy with those defaults and point the subprocess at it
+		// via XDG_CONFIG_HOME ($XDG_CONFIG_HOME/scienceflow/models.json).
+		if code, feedback, ok := r.models.SessionStageAliases(t.Session); ok {
+			if dir, err := r.sessionXDGConfigDir(t); err == nil {
+				if err := r.models.WriteSessionRegistry(dir, code, feedback); err != nil {
+					if r.logger != nil {
+						r.logger.Printf("write session model registry: %v", err)
+					}
+				} else {
+					env = append(env, "XDG_CONFIG_HOME="+dir)
+				}
+			} else if r.logger != nil {
+				r.logger.Printf("resolve session model registry dir: %v", err)
+			}
 		}
 	}
 	root := r.cfg.WorkspaceRoot
@@ -843,6 +877,22 @@ func (r *Runner) buildEnv(t *Task) []string {
 	}
 	env = append(env, "PYTHONUNBUFFERED=1")
 	return env
+}
+
+// sessionXDGConfigDir returns a private XDG_CONFIG_HOME for one agent task.
+// It lives under <workspace_root>/task_logs/<user>/<session>/xdg — outside
+// both the CLI's git-tracked run workspace and the file-tree sync root, so
+// the registry copy (which contains API keys) is never committed or listed.
+func (r *Runner) sessionXDGConfigDir(t *Task) (string, error) {
+	root, err := r.rootPath()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(root, "task_logs", t.User, t.Session, "xdg")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 func newTaskID() string {

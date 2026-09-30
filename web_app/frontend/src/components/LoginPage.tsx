@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Card, Form, Input, Button, Typography, App, theme } from 'antd';
-import { UserOutlined, LockOutlined, LoginOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { Card, Form, Input, Button, Typography, App } from 'antd';
+import { UserOutlined, LockOutlined, LoginOutlined } from '@ant-design/icons';
+import { Languages } from 'lucide-react';
 import * as api from '../api/client';
+import { useAppStore } from '../store/useAppStore';
+import { useT } from '../i18n/useT';
+import type { Lang } from '../i18n/translations';
 import type { AuthUser } from '../types';
 
 const { Title, Text } = Typography;
@@ -14,7 +18,13 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
   const { message: msgApi } = App.useApp();
-  const { token: themeToken } = theme.useToken();
+  const { language, setLanguage } = useAppStore();
+  const t = useT();
+
+  const toggleLang = useCallback(() => {
+    const next: Lang = language === 'en-US' ? 'zh-CN' : 'en-US';
+    setLanguage(next);
+  }, [language, setLanguage]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -102,14 +112,14 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
     setLoading(true);
     try {
       const result = await api.login(values.username, values.password);
-      msgApi.success('Welcome to ScienceFlow');
+      msgApi.success(t.login.welcome);
       setTimeout(() => onSuccess(result.token, result.user, values.username, values.password), 400);
     } catch (e: unknown) {
-      msgApi.error((e as Error).message || 'Login failed');
+      msgApi.error((e as Error).message || t.login.loginFailed);
     } finally {
       setLoading(false);
     }
-  }, [onSuccess, msgApi]);
+  }, [onSuccess, msgApi, t]);
 
   return (
     <div style={{
@@ -120,6 +130,17 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
     }}>
       <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
 
+      <button
+        className="login-lang-toggle"
+        type="button"
+        title={language === 'en-US' ? t.topbar.switchToChinese : t.topbar.switchToEnglish}
+        aria-label={language === 'en-US' ? t.topbar.switchToChinese : t.topbar.switchToEnglish}
+        onClick={toggleLang}
+      >
+        <Languages size={14} />
+        {language === 'en-US' ? '中文' : 'EN'}
+      </button>
+
       <div style={{ position: 'relative', zIndex: 1, width: 380, maxWidth: '92vw' }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{
@@ -127,14 +148,23 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
             borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'linear-gradient(135deg, rgba(22,119,255,0.12), rgba(22,119,255,0.04))',
             border: '1px solid rgba(22,119,255,0.15)',
+            overflow: 'hidden',
           }}>
-            <ThunderboltOutlined style={{ fontSize: 28, color: '#1677ff' }} />
+            <img
+              src="/favicon.ico"
+              alt="ScienceFlow"
+              style={{ width: 40, height: 40, objectFit: 'contain' }}
+            />
           </div>
           <Title level={2} style={{ margin: 0, color: '#e8f0fe', letterSpacing: -0.5 }}>
             ScienceFlow
           </Title>
           <Text type="secondary" style={{ fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase' }}>
-            Autonomous Agent Intelligence
+            {t.login.tagline1}
+          </Text>
+          <br></br>
+          <Text type="secondary" style={{ fontFamily: 'var(--mono)', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase' }}>
+            {t.login.tagline2}
           </Text>
         </div>
 
@@ -149,26 +179,26 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
           }}
         >
           <Title level={5} style={{ textAlign: 'center', margin: '0 0 20px', color: 'rgba(255,255,255,0.55)', fontWeight: 400, fontFamily: 'var(--mono)', fontSize: 13, letterSpacing: 1, textTransform: 'uppercase' }}>
-            Authentication Required
+            {t.login.authRequired}
           </Title>
 
           <Form form={form} onFinish={handleLogin} layout="vertical" size="large" autoComplete="off">
-            <Form.Item name="username" rules={[{ required: true, message: 'Please enter your username' }]}>
-              <Input prefix={<UserOutlined style={{ color: 'rgba(255,255,255,0.25)' }} />} placeholder="Username" />
+            <Form.Item name="username" rules={[{ required: true, message: t.login.usernameRequired }]}>
+              <Input prefix={<UserOutlined style={{ color: 'rgba(255,255,255,0.25)' }} />} placeholder={t.login.usernamePlaceholder} />
             </Form.Item>
-            <Form.Item name="password" rules={[{ required: true, message: 'Please enter your password' }]}>
-              <Input.Password prefix={<LockOutlined style={{ color: 'rgba(255,255,255,0.25)' }} />} placeholder="Password" />
+            <Form.Item name="password" rules={[{ required: true, message: t.login.passwordRequired }]}>
+              <Input.Password prefix={<LockOutlined style={{ color: 'rgba(255,255,255,0.25)' }} />} placeholder={t.login.passwordPlaceholder} />
             </Form.Item>
             <Form.Item style={{ marginBottom: 0 }}>
               <Button type="primary" htmlType="submit" loading={loading} block size="large" icon={<LoginOutlined />}>
-                Sign In
+                {t.login.signIn}
               </Button>
             </Form.Item>
           </Form>
 
           <div style={{ textAlign: 'center', marginTop: 16 }}>
             <Text type="secondary" style={{ fontSize: 11, fontFamily: 'var(--mono)' }}>
-              Login state cached for 7 days
+              {t.login.cachedHint}
             </Text>
           </div>
         </Card>
@@ -180,7 +210,7 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
         }}>
           <span>ScienceFlow v0.1</span>
           <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
-          <span>ScienceFlow Agent Engine</span>
+          <span>{t.login.engineName}</span>
         </div>
       </div>
     </div>

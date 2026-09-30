@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -54,13 +56,19 @@ type BackendConfig struct {
 // user/session. The gateway does NOT modify the agent codebase; it shells out
 // to `python -m scienceflow.cli` with a per-session manifest, placing the
 // execution workspace under $SCIFLOW_WORKSPACE_ROOT/<user>/<session>.
+//
+// Module resolution: when RepoRoot is set, the subprocess runs with cwd there
+// and the in-repo scienceflow package shadows site-packages (repo mode). When
+// RepoRoot is empty, cwd falls back to the task workspace and `python -m
+// scienceflow.cli` resolves the pip-installed package from site-packages
+// (installed mode).
 type AgentConfig struct {
 	Enabled          bool     `json:"enabled"`            // master switch for agent invocation
 	Python           string   `json:"python"`             // python interpreter (or "uv run python")
 	Module           string   `json:"module"`             // CLI module, default "scienceflow.cli"
 	Command          string   `json:"command"`            // subcommand: repl | run
-	ConfigYAML       string   `json:"config_yaml"`        // -c config path passed to the CLI
-	RepoRoot         string   `json:"repo_root"`          // cwd for the subprocess (ScienceFlow repo root)
+	ConfigYAML       string   `json:"config_yaml"`        // -c config path passed to the CLI; empty = installed package's built-in default
+	RepoRoot         string   `json:"repo_root"`          // cwd for the subprocess (ScienceFlow repo root); empty = task workspace (installed mode)
 	WorkspaceRoot    string   `json:"workspace_root"`     // overrides $SCIFLOW_WORKSPACE_ROOT if non-empty
 	InputDataDir     string   `json:"input_data_dir"`     // optional -d shared dataset root
 	ExpID            string   `json:"exp_id"`             // optional --exp-id
@@ -133,6 +141,21 @@ type ScanConfig struct {
 	Frequency Duration `json:"frequency"`
 }
 
+// DefaultModelStorePath returns the model registry location the installed
+// scienceflow CLI resolves (foundation.config.llm.model_registry.
+// default_model_config_path): $XDG_CONFIG_HOME/scienceflow/models.json, or
+// ~/.config/scienceflow/models.json. Managing the same file is what makes the
+// gateway's /models endpoints effective for agent runs.
+func DefaultModelStorePath() string {
+	if xdg := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdg != "" {
+		return filepath.Join(xdg, "scienceflow", "models.json")
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".config", "scienceflow", "models.json")
+	}
+	return "data/models.json"
+}
+
 func Load(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -175,7 +198,7 @@ func (c *Config) applyDefaults() {
 		c.Agent.LogDirName = "task_logs"
 	}
 	if c.Agent.ModelStorePath == "" {
-		c.Agent.ModelStorePath = "data/models.json"
+		c.Agent.ModelStorePath = DefaultModelStorePath()
 	}
 	if c.Agent.MaxConcurrent == 0 {
 		c.Agent.MaxConcurrent = 4
@@ -267,9 +290,9 @@ func (c *Config) validate() error {
 		}
 	}
 	if c.Agent.Enabled {
-		if c.Agent.RepoRoot == "" {
-			return fmt.Errorf("agent.repo_root is required when agent.enabled is true")
-		}
+		// repo_root is optional: empty means installed-package mode where the
+		// subprocess cwd falls back to the task workspace and the CLI module
+		// resolves from site-packages.
 		switch c.Agent.Command {
 		case "repl", "run":
 		default:

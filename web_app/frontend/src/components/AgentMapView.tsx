@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useT } from '../i18n/useT';
 import { buildAgentMapModel } from '../utils/collab';
 import { resolveAgentRoomPose } from '../utils/motion';
+import * as api from '../api/client';
 import type { AgentMapModel, AgentMapAgent } from '../types';
 import clsx from 'clsx';
 
@@ -23,9 +24,25 @@ export function AgentMapView() {
     agentPositionId, agentMapBackground,
   } = useAppStore();
   const t = useT();
-  const backgroundSrc = agentMapBackground === 'lab'
-    ? './assets/agent-map-lab-bg.png'
-    : './assets/agent-map-bg.png';
+  const [customBackground, setCustomBackground] = useState('');
+
+  // Custom backgrounds live outside the bundle (<program dir>/themes/
+  // backgrounds), so they are fetched through the app bindings as data URIs.
+  useEffect(() => {
+    if (!agentMapBackground) {
+      setCustomBackground('');
+      return;
+    }
+    let cancelled = false;
+    api.fetchThemeBackgroundData(agentMapBackground)
+      .then((data) => { if (!cancelled) setCustomBackground(data); })
+      .catch(() => { if (!cancelled) setCustomBackground(''); });
+    return () => { cancelled = true; };
+  }, [agentMapBackground]);
+
+  // Bundled default background (also the fallback when a chosen
+  // themes/backgrounds image is missing or unreadable).
+  const backgroundSrc = customBackground || './assets/scienceflow-lab.png';
 
   const model = useMemo(() => {
     return buildAgentMapModel(currentState, {
@@ -49,9 +66,6 @@ export function AgentMapView() {
   return (
     <div className="agent-map-stage-only">
       <picture>
-        {agentMapBackground === 'lab' && (
-          <source media="(max-width: 768px)" srcSet="./assets/agent-map-lab-bg-mobile.png" />
-        )}
         <img
           className="agent-map-photo"
           src={backgroundSrc}

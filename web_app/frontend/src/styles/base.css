@@ -121,6 +121,22 @@
       white-space: nowrap;
     }
 
+    .topbar-user-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .topbar-user-group .topbar-logout {
+      width: 32px;
+      min-width: 32px;
+      padding: 0;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 999px;
+    }
+
     .topbar-user .topbar-user-icon {
       flex: 0 0 auto;
       color: var(--muted);
@@ -135,6 +151,33 @@
 
     .lang-toggle {
       min-height: 32px;
+    }
+
+    /* ── login page language toggle ── */
+    .login-lang-toggle {
+      position: absolute;
+      top: 16px;
+      right: 20px;
+      z-index: 2;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 32px;
+      padding: 7px 10px;
+      border: 1px solid rgba(255, 255, 255, .14);
+      border-radius: var(--r-md);
+      background: rgba(255, 255, 255, .04);
+      color: rgba(255, 255, 255, .55);
+      font-family: var(--mono);
+      font-size: 12px;
+      cursor: pointer;
+      transition: color .15s ease, border-color .15s ease, background .15s ease;
+    }
+
+    .login-lang-toggle:hover {
+      color: #e8f0fe;
+      border-color: rgba(22, 119, 255, .48);
+      background: rgba(22, 119, 255, .12);
     }
 
     .topbar-logout {
@@ -487,6 +530,28 @@
       background: var(--green);
       flex-shrink: 0;
       animation: statusBreath 2.4s ease-in-out infinite;
+    }
+
+    /* Gateway connection states (connected = default green breathing dot). */
+    .top-context-item.status.is-connecting {
+      border-color: rgba(242, 200, 107, .32);
+    }
+
+    .top-context-item.status.is-connecting::before {
+      background: var(--yellow);
+      box-shadow: none;
+    }
+
+    .top-context-item.status.is-offline,
+    .top-context-item.status.is-unauthorized {
+      border-color: rgba(255, 107, 122, .32);
+    }
+
+    .top-context-item.status.is-offline::before,
+    .top-context-item.status.is-unauthorized::before {
+      background: var(--red);
+      animation: none;
+      opacity: .75;
     }
 
     @keyframes statusBreath {

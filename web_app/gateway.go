@@ -13,8 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const defaultGatewayURL = "http://127.0.0.1:8080"
@@ -67,8 +65,17 @@ type GatewayModelUpdateRequest struct {
 	APIURL    string `json:"api_url"`
 }
 
+// GatewayModelsResponse mirrors GET /models.
 type GatewayModelsResponse struct {
 	Models []GatewayModelInfo `json:"models"`
+}
+
+// GatewayHealth reports the result of probing the gateway's GET /healthz.
+type GatewayHealth struct {
+	Status      string `json:"status"`
+	Subscribers int    `json:"subscribers"`
+	URL         string `json:"url"`
+	LatencyMs   int64  `json:"latency_ms"`
 }
 
 type GatewayActivateModelResponse struct {
@@ -216,6 +223,29 @@ func (a *App) GatewayLogin(req GatewayLoginRequest) (GatewayLoginResult, error) 
 	if err := json.Unmarshal(raw, &res); err != nil {
 		return GatewayLoginResult{}, err
 	}
+	return res, nil
+}
+
+// GatewayTestConnection probes the gateway server itself (GET /healthz, no
+// token required) and reports reachability plus round-trip latency.
+func (a *App) GatewayTestConnection() (GatewayHealth, error) {
+	start := time.Now()
+	status, raw, err := a.gatewayDo(http.MethodGet, "/healthz", "", nil)
+	if err != nil {
+		return GatewayHealth{}, err
+	}
+	if status != http.StatusOK {
+		return GatewayHealth{}, gatewayHTTPError(status, raw)
+	}
+	var res GatewayHealth
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return GatewayHealth{}, err
+	}
+	if res.Status == "" {
+		res.Status = "ok"
+	}
+	res.URL = a.gatewayURL
+	res.LatencyMs = time.Since(start).Milliseconds()
 	return res, nil
 }
 
@@ -614,17 +644,17 @@ func (m *gatewayStreamManager) run(ctx context.Context, baseURL, sessionID strin
 		if ctx.Err() != nil {
 			return
 		}
-		runtime.EventsEmit(ctx, "gateway-status", GatewayStatusEvent{Status: "connecting"})
+		emitEvent("gateway-status", GatewayStatusEvent{Status: "connecting"})
 		err := m.stream(ctx, baseURL, sessionID)
 		if ctx.Err() != nil {
 			return
 		}
 		if errors.Is(err, errGatewayUnauthorized) {
-			runtime.EventsEmit(ctx, "gateway-status", GatewayStatusEvent{Status: "unauthorized"})
+			emitEvent("gateway-status", GatewayStatusEvent{Status: "unauthorized"})
 			return
 		}
 		if err != nil {
-			runtime.EventsEmit(ctx, "gateway-status", GatewayStatusEvent{Status: "disconnected", Error: err.Error()})
+			emitEvent("gateway-status", GatewayStatusEvent{Status: "disconnected", Error: err.Error()})
 		} else {
 			backoff = time.Second
 		}
@@ -661,7 +691,7 @@ func (m *gatewayStreamManager) stream(ctx context.Context, baseURL, sessionID st
 		return fmt.Errorf("gateway stream status %d", resp.StatusCode)
 	}
 
-	runtime.EventsEmit(ctx, "gateway-status", GatewayStatusEvent{Status: "connected"})
+	emitEvent("gateway-status", GatewayStatusEvent{Status: "connected"})
 	reader := bufio.NewReader(resp.Body)
 
 	var (
@@ -706,7 +736,7 @@ func (m *gatewayStreamManager) handleLog(ctx context.Context, payload string, se
 		return
 	}
 	evt.SessionID = sessionID
-	runtime.EventsEmit(ctx, "gateway-log", evt)
+	emitEvent("gateway-log", evt)
 }
 
 func (m *gatewayStreamManager) handleFile(ctx context.Context, payload string, sessionID string) {
@@ -715,7 +745,7 @@ func (m *gatewayStreamManager) handleFile(ctx context.Context, payload string, s
 		return
 	}
 	evt.SessionID = sessionID
-	runtime.EventsEmit(ctx, "gateway-file", evt)
+	emitEvent("gateway-file", evt)
 }
 
 func (m *gatewayStreamManager) handleBackfill(ctx context.Context, payload string, sessionID string) {
@@ -724,7 +754,7 @@ func (m *gatewayStreamManager) handleBackfill(ctx context.Context, payload strin
 		return
 	}
 	evt.SessionID = sessionID
-	runtime.EventsEmit(ctx, "gateway-backfill", evt)
+	emitEvent("gateway-backfill", evt)
 }
 
 func (m *gatewayStreamManager) handleBackfillDone(ctx context.Context, payload string, sessionID string) {
@@ -733,5 +763,5 @@ func (m *gatewayStreamManager) handleBackfillDone(ctx context.Context, payload s
 		return
 	}
 	evt.SessionID = sessionID
-	runtime.EventsEmit(ctx, "gateway-backfill-done", evt)
+	emitEvent("gateway-backfill-done", evt)
 }

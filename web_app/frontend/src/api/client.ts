@@ -1,44 +1,12 @@
 import type {
   ScienceFlowState,
   StatePatch,
-  ChatSession,
-  ChatMessage,
-  RuntimeSettings,
-  BackendHealth,
-  WorkspaceFileList,
   AuthUser,
-  Command,
-  Job,
-  PromoteInfo,
-  DecisionCard,
 } from '../types';
 
-import {
-  Proxy,
-  DownloadZip,
-  UploadDataset,
-  UploadDatasetFolder,
-  StartChatStream,
-  StopChatStream,
-  SetBackendURL,
-  GetBackendURL,
-} from '../../wailsjs/go/main/App';
+import { ListThemeBackgrounds, Proxy, ReadThemeBackground } from '../../bindings/scienceflow/app';
 
 import { debug } from '../utils/debug';
-
-// ── Base URL (delegated to the Go backend proxy) ──
-
-export function setApiBase(base: string) {
-  void SetBackendURL(base || '');
-}
-
-export async function getApiBase(): Promise<string> {
-  try {
-    return await GetBackendURL();
-  } catch {
-    return '';
-  }
-}
 
 // ── Client id ──
 
@@ -105,14 +73,6 @@ export function clearAuth(): void {
   localStorage.removeItem(AUTH_KEY);
 }
 
-// ── Low-level transport metrics ──
-
-let lastTransportMetrics: Record<string, unknown> | null = null;
-
-export function getLastTransportMetrics() {
-  return lastTransportMetrics;
-}
-
 // ── Generic JSON/text proxy request ──
 
 interface ProxyResult {
@@ -165,7 +125,6 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T & 
   data.etag = res.etag || '';
   if (res.transport) {
     data._transport_client = res.transport;
-    lastTransportMetrics = res.transport as unknown as Record<string, unknown>;
   }
   return data as T & ProxyResult;
 }
@@ -228,39 +187,7 @@ export async function fetchStatePatch(options: {
   return request<{ state_patch?: StatePatch }>(`/api/state/patch${qs}`);
 }
 
-// ── Health ──
-export async function fetchHealth(): Promise<BackendHealth> {
-  return request('/api/health');
-}
-
-// ── Settings ──
-export async function fetchSettings(): Promise<RuntimeSettings> {
-  return request('/api/settings');
-}
-
-export async function saveSettings(settings: RuntimeSettings): Promise<{ ok: boolean }> {
-  return request('/api/settings', {
-    method: 'POST',
-    body: JSON.stringify(settings),
-  });
-}
-
 // ── Workspace ──
-export async function attachWorkspace(taskRoot: string): Promise<{ ok: boolean }> {
-  return request('/api/workspaces/attach', {
-    method: 'POST',
-    body: JSON.stringify({ task_root: taskRoot }),
-  });
-}
-
-export async function fetchWorkspaceFiles(taskRoot?: string, sessionId?: string): Promise<WorkspaceFileList> {
-  const params = new URLSearchParams();
-  if (taskRoot) params.set('task_root', taskRoot);
-  if (sessionId) params.set('session_id', sessionId);
-  const qs = params.toString();
-  return request(`/api/workspace/files${qs ? '?' + qs : ''}`);
-}
-
 export async function fetchWorkspaceFileContent(path: string, taskRoot?: string, sessionId?: string): Promise<{ content: string; content_type: string; encoding?: string }> {
   const params = new URLSearchParams({ path });
   if (taskRoot) params.set('task_root', taskRoot);
@@ -268,176 +195,7 @@ export async function fetchWorkspaceFileContent(path: string, taskRoot?: string,
   return request(`/api/workspace/file/content?${params.toString()}`);
 }
 
-export async function downloadWorkspaceZip(paths: string[], taskRoot?: string): Promise<Blob> {
-  const token = _getAuthToken() || '';
-  const payload = await DownloadZip(paths, taskRoot || '', token);
-  const bytes = base64ToUint8Array(payload.data || '');
-  const type = payload.contentType || 'application/zip';
-  return new Blob([bytes], { type });
-}
-
-function base64ToUint8Array(base64: string): Uint8Array {
-  const bin = atob(base64);
-  const len = bin.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
-
-// ── Logs ──
-export async function fetchLogs(taskRoot?: string): Promise<{ files: { name: string; path: string; size: number }[] }> {
-  const params = taskRoot ? `?task_root=${encodeURIComponent(taskRoot)}` : '';
-  return request(`/api/logs${params}`);
-}
-
-export async function fetchLogContent(logPath: string, taskRoot?: string): Promise<{ content: string }> {
-  const params = new URLSearchParams({ path: logPath });
-  if (taskRoot) params.set('task_root', taskRoot);
-  return request(`/api/logs/content?${params.toString()}`);
-}
-
-// ── Tasks ──
-export async function createTask(description?: string): Promise<{ task_id: string; task_root: string }> {
-  return request('/api/tasks', {
-    method: 'POST',
-    body: JSON.stringify({ description }),
-  });
-}
-
-export async function promoteTask(taskId: string): Promise<PromoteInfo> {
-  return request(`/api/tasks/${encodeURIComponent(taskId)}/promote`, { method: 'POST' });
-}
-
-export async function bindDataset(taskId: string, datasetPath: string): Promise<{ ok: boolean }> {
-  return request(`/api/tasks/${encodeURIComponent(taskId)}/dataset`, {
-    method: 'POST',
-    body: JSON.stringify({ dataset_path: datasetPath }),
-  });
-}
-
-export async function setTaskMode(taskId: string, mode: 'lite' | 'heavy'): Promise<{ ok: boolean }> {
-  return request(`/api/tasks/${encodeURIComponent(taskId)}/mode`, {
-    method: 'POST',
-    body: JSON.stringify({ mode }),
-  });
-}
-
-// ── Datasets (multipart upload via Go) ──
-export async function uploadDataset(file: File, sessionId?: string): Promise<{ path: string; name: string }> {
-  const token = _getAuthToken() || '';
-  const data = await fileToBase64(file);
-  return UploadDataset({ filename: file.name, data }, sessionId || '', token);
-}
-
-export async function uploadDatasetFolder(files: File[], sessionId?: string): Promise<{ path: string; name: string }> {
-  const token = _getAuthToken() || '';
-  const uploaded = [];
-  for (const f of files) {
-    uploaded.push({ filename: f.name, data: await fileToBase64(f) });
-  }
-  return UploadDatasetFolder(uploaded, sessionId || '', token);
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const idx = result.indexOf(',');
-      resolve(idx >= 0 ? result.slice(idx + 1) : result);
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
-// ── Chat ──
-export async function fetchChatSessions(taskRoot?: string): Promise<{ sessions: ChatSession[] }> {
-  const params = taskRoot ? `?task_root=${encodeURIComponent(taskRoot)}` : '';
-  return request(`/api/chat/sessions${params}`);
-}
-
-export async function fetchChatMessages(sessionId: string): Promise<ChatMessage[]> {
-  return request(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`);
-}
-
-export async function postChatMessage(
-  sessionId: string,
-  content: string,
-  options: { route?: string; idempotencyKey?: string } = {}
-): Promise<{ message_id: string; run_id: string; accepted: boolean }> {
-  const url = `/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`;
-  debug.log('api', 'postChatMessage:', url, 'content=', content.slice(0, 40));
-  return request(url, {
-    method: 'POST',
-    body: JSON.stringify({
-      text: content,
-      chat_route: options.route || 'agent',
-      idempotency_key: options.idempotencyKey,
-    }),
-  });
-}
-
-export async function createChatSession(taskRoot: string, mode = 'agent'): Promise<{ session_id: string; created_at: string; task_root: string }> {
-  return request('/api/chat/sessions', {
-    method: 'POST',
-    body: JSON.stringify({ task_root: taskRoot, mode }),
-  });
-}
-
-export async function cancelChatRun(sessionId: string): Promise<{ ok: boolean }> {
-  return request(`/api/chat/sessions/${encodeURIComponent(sessionId)}/cancel`, { method: 'POST' });
-}
-
-// Chat SSE is now bridged through the Go backend. The Go layer maintains the
-// EventSource connection and re-emits events via the "chat-event" Wails event.
-export function startChatStream(sessionId: string): void {
-  const token = _getAuthToken() || '';
-  debug.log('api', 'startChatStream:', sessionId, 'hasToken=', !!token);
-  StartChatStream(sessionId, token);
-}
-
-export function stopChatStream(): void {
-  StopChatStream();
-}
-
-// ── Commands ──
-export async function fetchCommands(taskRoot?: string): Promise<{ commands: Command[] }> {
-  const params = taskRoot ? `?task_root=${encodeURIComponent(taskRoot)}` : '';
-  return request(`/api/commands${params}`);
-}
-
-export async function appendCommand(command: { text: string; command_id?: string }): Promise<Command> {
-  return request('/api/commands', {
-    method: 'POST',
-    body: JSON.stringify(command),
-  });
-}
-
-// ── Jobs ──
-export async function fetchJobs(taskRoot?: string): Promise<{ jobs: Job[] }> {
-  const params = taskRoot ? `?task_root=${encodeURIComponent(taskRoot)}` : '';
-  return request(`/api/jobs${params}`);
-}
-
-export async function launchJob(jobId: string): Promise<{ ok: boolean }> {
-  return request(`/api/jobs/${encodeURIComponent(jobId)}/launch`, { method: 'POST' });
-}
-
-export async function fetchJobLogs(jobId: string): Promise<{ stdout: string; stderr: string }> {
-  return request(`/api/jobs/${encodeURIComponent(jobId)}/logs`);
-}
-
-// ── Artifacts ──
-export async function fetchArtifactContent(artifactId: string): Promise<{ content: string; content_type: string }> {
-  return request(`/api/artifacts/${encodeURIComponent(artifactId)}/content`);
-}
-
 // ── Decisions ──
-export async function fetchDecisions(): Promise<{ decisions: DecisionCard[] }> {
-  return request('/api/decisions');
-}
-
 export async function resolveDecision(decisionId: string, choice: string): Promise<{ ok: boolean }> {
   return request(`/api/decisions/${encodeURIComponent(decisionId)}`, {
     method: 'POST',
@@ -508,6 +266,21 @@ export async function login(username: string, password: string): Promise<{ token
   return { token: data.token, user };
 }
 
-export async function register(username: string, password: string, _displayName?: string): Promise<{ token: string; user: AuthUser }> {
-  throw new Error('register is not supported; accounts are managed in AUTH.yaml');
+// ── Theme backgrounds (<program dir>/themes/backgrounds) ──
+
+export async function fetchThemeBackgrounds(): Promise<string[]> {
+  try {
+    return await ListThemeBackgrounds();
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchThemeBackgroundData(name: string): Promise<string> {
+  if (!name) return '';
+  try {
+    return await ReadThemeBackground(name);
+  } catch {
+    return '';
+  }
 }

@@ -3,7 +3,10 @@ export type Lang = 'zh-CN' | 'en-US';
 export interface Translations {
   topbar: {
     title: string;
-    status: string;
+    statusConnected: string;
+    statusConnecting: string;
+    statusDisconnected: string;
+    statusUnauthorized: string;
     workspaceReady: string;
     batch: string;
     settings: string;
@@ -11,6 +14,20 @@ export interface Translations {
     switchToChinese: string;
     switchToEnglish: string;
     logout: string;
+  };
+  login: {
+    tagline1: string;
+    tagline2: string;
+    authRequired: string;
+    usernamePlaceholder: string;
+    passwordPlaceholder: string;
+    usernameRequired: string;
+    passwordRequired: string;
+    signIn: string;
+    welcome: string;
+    loginFailed: string;
+    cachedHint: string;
+    engineName: string;
   };
   agentMap: {
     imgAlt: string;
@@ -80,9 +97,20 @@ export interface Translations {
     uploadFile: string;
     selectAgent: string;
     noDataset: string;
+    runLabel: string;
+    toolCallsUnit: string;
+    iterationsShort: string;
+    reasoning: string;
+    output: string;
+    agentWorking: string;
+    agentStarting: string;
+    copyAnswer: string;
+    copied: string;
+    emptyTitle: string;
+    emptyHint: string;
+    emptyOfflineHint: string;
   };
   l1Workspace: {
-    backToAgentMap: string;
     board: string;
     lineage: string;
     workspace: string;
@@ -178,6 +206,34 @@ export interface Translations {
     file: string;
     copyContent: string;
     download: string;
+    taskState: string;
+    exitCode: string;
+    rounds: string;
+    modelsLabel: string;
+    activity: string;
+    toolsLabel: string;
+    failuresLabel: string;
+    llmCallsLabel: string;
+    turnsLabel: string;
+    contextAndMemory: string;
+    contextLength: string;
+    contextMessages: string;
+    compactions: string;
+    contextTriggers: string;
+    longTermMemory: string;
+    shortTermMemory: string;
+    efficiencyAndRisk: string;
+    outputCompression: string;
+    writesEdits: string;
+    metricProduced: string;
+    riskNone: string;
+    recentCalls: string;
+    modelLabel: string;
+    roleLabel: string;
+    cacheRateLabel: string;
+    tpotLabel: string;
+    finishLabel: string;
+    localResources: string;
   };
   reportViewer: {
     reportNav: string;
@@ -213,13 +269,9 @@ export interface Translations {
     textSize: string;
     backgroundImage: string;
     agentMapBackground: string;
-    labBackground: string;
     small: string;
     default: string;
     large: string;
-    panelLayout: string;
-    agentMap: string;
-    platformChat: string;
     workspace: string;
     baseFolder: string;
     baseFolderPlaceholder: string;
@@ -294,7 +346,10 @@ export interface Translations {
 export const zhCN: Translations = {
   topbar: {
     title: 'ScienceFlow',
-    status: '已连接',
+    statusConnected: '已连接',
+    statusConnecting: '连接中',
+    statusDisconnected: '未连接',
+    statusUnauthorized: '未授权',
     workspaceReady: '工作空间就绪',
     batch: '批次',
     settings: '设置',
@@ -303,9 +358,23 @@ export const zhCN: Translations = {
     switchToEnglish: '切换到英文',
     logout: '退出登录',
   },
+  login: {
+    tagline1: '让长程研究',
+    tagline2: '可恢复 · 可适应 · 高效',
+    authRequired: '需要身份验证',
+    usernamePlaceholder: '用户名',
+    passwordPlaceholder: '密码',
+    usernameRequired: '请输入用户名',
+    passwordRequired: '请输入密码',
+    signIn: '登录',
+    welcome: '欢迎使用 ScienceFlow',
+    loginFailed: '登录失败',
+    cachedHint: '登录状态缓存 7 天',
+    engineName: 'ScienceFlow 智能体引擎',
+  },
   agentMap: {
     imgAlt: 'Agent地图工作空间',
-    openBoard: '打开Agent地图',
+    openBoard: '打开Agent工作空间',
     openBoardAria: '打开L1面板',
     keyReport: '关键报告',
     keyReportAria: '打开关键报告',
@@ -371,9 +440,20 @@ export const zhCN: Translations = {
     uploadFile: '上传文件',
     selectAgent: '请在地图上选择一个智能体。',
     noDataset: '未挂载数据集。',
+    runLabel: '运行',
+    toolCallsUnit: '次工具调用',
+    iterationsShort: '迭代',
+    reasoning: '思考',
+    output: '输出',
+    agentWorking: '智能体执行中…',
+    agentStarting: '启动中',
+    copyAnswer: '复制回答',
+    copied: '已复制',
+    emptyTitle: 'Agent Copilot',
+    emptyHint: '发送消息后，智能体的思考、工具调用与答复将在此实时呈现。',
+    emptyOfflineHint: '连接日志网关后，智能体的工作流将在此实时呈现。',
   },
   l1Workspace: {
-    backToAgentMap: '返回Agent地图',
     board: '看板',
     lineage: '谱系',
     workspace: '工作空间',
@@ -469,6 +549,34 @@ export const zhCN: Translations = {
     logsWaiting: '等待 Agent 运行…',
     running: '运行中',
     file: '文件',
+    taskState: '任务状态',
+    exitCode: '退出码',
+    rounds: '轮次',
+    modelsLabel: '模型',
+    activity: '活动',
+    toolsLabel: '工具',
+    failuresLabel: '失败',
+    llmCallsLabel: 'LLM 调用',
+    turnsLabel: '对话轮次',
+    contextAndMemory: '上下文与内存',
+    contextLength: '上下文长度',
+    contextMessages: '上下文消息数',
+    compactions: '上下文压缩',
+    contextTriggers: '上下文触发',
+    longTermMemory: '长期记忆',
+    shortTermMemory: '短期记忆',
+    efficiencyAndRisk: '效率与风险',
+    outputCompression: '工具输出压缩',
+    writesEdits: '文件写/改',
+    metricProduced: '指标产出',
+    riskNone: '无风险提示',
+    recentCalls: '最近 LLM 调用',
+    modelLabel: '模型',
+    roleLabel: '角色',
+    cacheRateLabel: '缓存率',
+    tpotLabel: 'TPOT',
+    finishLabel: '结束原因',
+    localResources: '本地资源',
   },
   reportViewer: {
     reportNav: '报告导航',
@@ -504,13 +612,9 @@ export const zhCN: Translations = {
     textSize: '文字大小',
     backgroundImage: '背景图片',
     agentMapBackground: '默认Agent地图',
-    labBackground: '实验室背景',
     small: '小',
     default: '默认',
     large: '大',
-    panelLayout: '面板布局',
-    agentMap: 'Agent地图',
-    platformChat: '平台聊天',
     workspace: '工作空间',
     baseFolder: '基础目录',
     baseFolderPlaceholder: '/path/to/tasks',
@@ -585,7 +689,10 @@ export const zhCN: Translations = {
 export const enUS: Translations = {
   topbar: {
     title: 'ScienceFlow',
-    status: 'connected',
+    statusConnected: 'Connected',
+    statusConnecting: 'Connecting',
+    statusDisconnected: 'Disconnected',
+    statusUnauthorized: 'Unauthorized',
     workspaceReady: 'Workspace ready',
     batch: 'Batch',
     settings: 'Settings',
@@ -594,9 +701,23 @@ export const enUS: Translations = {
     switchToEnglish: 'Switch to English',
     logout: 'Sign out',
   },
+  login: {
+    tagline1: 'Making Long-Horizon Research',
+    tagline2: 'Recoverable, Adaptive, and Efficient',
+    authRequired: 'Authentication Required',
+    usernamePlaceholder: 'Username',
+    passwordPlaceholder: 'Password',
+    usernameRequired: 'Please enter your username',
+    passwordRequired: 'Please enter your password',
+    signIn: 'Sign In',
+    welcome: 'Welcome to ScienceFlow',
+    loginFailed: 'Login failed',
+    cachedHint: 'Login state cached for 7 days',
+    engineName: 'ScienceFlow Agent Engine',
+  },
   agentMap: {
     imgAlt: 'Agent map workspace',
-    openBoard: 'Open Agent Map',
+    openBoard: 'Open Agent Workspace',
     openBoardAria: 'Open L1 Board',
     keyReport: 'Key Report',
     keyReportAria: 'Open Key Report',
@@ -662,9 +783,20 @@ export const enUS: Translations = {
     uploadFile: 'Upload file',
     selectAgent: 'Select an agent on the map.',
     noDataset: 'No dataset attached.',
+    runLabel: 'Run',
+    toolCallsUnit: 'tool calls',
+    iterationsShort: 'iter',
+    reasoning: 'Reasoning',
+    output: 'Output',
+    agentWorking: 'Agent working…',
+    agentStarting: 'starting',
+    copyAnswer: 'Copy answer',
+    copied: 'Copied',
+    emptyTitle: 'Agent Copilot',
+    emptyHint: 'Send a message — the agent\'s reasoning, tool calls and answer will stream here in real time.',
+    emptyOfflineHint: 'Connect to the log gateway to watch the agent workflow in real time.',
   },
   l1Workspace: {
-    backToAgentMap: 'Back to Agent Map',
     board: 'Board',
     lineage: 'Lineage',
     workspace: 'Workspace',
@@ -760,6 +892,34 @@ export const enUS: Translations = {
     logsWaiting: 'Waiting for agent run…',
     running: 'running',
     file: 'file',
+    taskState: 'Task state',
+    exitCode: 'Exit code',
+    rounds: 'Rounds',
+    modelsLabel: 'Models',
+    activity: 'Activity',
+    toolsLabel: 'Tools',
+    failuresLabel: 'Failures',
+    llmCallsLabel: 'LLM calls',
+    turnsLabel: 'Turns',
+    contextAndMemory: 'Context & Memory',
+    contextLength: 'Context length',
+    contextMessages: 'Context messages',
+    compactions: 'Compactions',
+    contextTriggers: 'Context checks',
+    longTermMemory: 'Long-term memory',
+    shortTermMemory: 'Short-term memory',
+    efficiencyAndRisk: 'Efficiency & Risk',
+    outputCompression: 'Output compression',
+    writesEdits: 'Writes / edits',
+    metricProduced: 'Metric produced',
+    riskNone: 'No risks detected',
+    recentCalls: 'Recent LLM calls',
+    modelLabel: 'Model',
+    roleLabel: 'Role',
+    cacheRateLabel: 'Cache',
+    tpotLabel: 'TPOT',
+    finishLabel: 'Finish',
+    localResources: 'Local machine',
   },
   reportViewer: {
     reportNav: 'Report navigation',
@@ -795,13 +955,9 @@ export const enUS: Translations = {
     textSize: 'Text size',
     backgroundImage: 'Background image',
     agentMapBackground: 'Default Agent Map',
-    labBackground: 'Lab Background',
     small: 'Small',
     default: 'Default',
     large: 'Large',
-    panelLayout: 'Panel layout',
-    agentMap: 'Agent Map',
-    platformChat: 'Platform Chat',
     workspace: 'Workspace',
     baseFolder: 'Base folder',
     baseFolderPlaceholder: '/path/to/tasks',

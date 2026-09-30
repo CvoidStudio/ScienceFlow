@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -664,6 +665,9 @@ func (h *harvester) mlProcess(line string) (string, bool) {
 }
 
 func (h *harvester) publish(msg string, offset int64) {
+	if filepath.Base(h.path) == "interaction.log" {
+		msg = cleanInteractionLine(msg)
+	}
 	input := h.input.Name
 	if input == "" {
 		input = h.path
@@ -698,12 +702,30 @@ func (h *harvester) publishRaw(chunk []byte, offset int64) {
 	})
 }
 
-// sessionFromAgentLogPath extracts the session id from a per-session agent log
-// path (.../task_logs/<user>/<session>/RAW.log), or "" for other files.
+// sessionFromAgentLogPath extracts the session id from per-session agent log
+// paths, or "" for other files:
+//
+//	.../task_logs/<user>/<session>/RAW.log
+//	.../<user>/<session>/run/.logs/interaction.log
 func sessionFromAgentLogPath(path string) string {
 	parts := strings.Split(filepath.ToSlash(path), "/")
 	if len(parts) >= 3 && parts[len(parts)-1] == "RAW.log" {
 		return parts[len(parts)-2]
 	}
+	if len(parts) >= 4 && parts[len(parts)-1] == "interaction.log" && parts[len(parts)-2] == ".logs" {
+		return parts[len(parts)-4]
+	}
 	return ""
+}
+
+var (
+	ansiEscapeRe   = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+	loguruPrefixRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \| [A-Z]+\s*\| `)
+)
+
+// cleanInteractionLine normalizes one interaction.log line for SSE consumers:
+// ANSI color escapes and the loguru timestamp/level prefix are stripped so the
+// payload ([user] ..., [tool-call] ..., [assistant] ..., tool output) stays.
+func cleanInteractionLine(line string) string {
+	return loguruPrefixRe.ReplaceAllString(ansiEscapeRe.ReplaceAllString(line, ""), "")
 }

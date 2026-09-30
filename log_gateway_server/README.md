@@ -91,6 +91,33 @@ $env:GOOS="linux"; $env:GOARCH="amd64"; go build -o lgw .; Remove-Item Env:GOOS,
 .\lgw.exe -config config.json
 ```
 
+### 启动引导（scienceflow 环境自检）
+
+`lgw` 启动时默认先执行一次引导流程：检测 `agent.python` 解释器（显示解析后的真实路径与版本）→ 检测 scienceflow 安装与版本 → 查询索引最新版本（scienceflow 只发预发布版，自动回退 `--pre`）→ 按需安装/更新 → 打印网关配置总览后进入服务流程。
+
+- **未安装**：显示 Python 路径与 pip 安装命令，询问是否自动安装；确认则执行 `pip install`，拒绝则打印手动命令并以退出码 1 结束。
+- **有更新**：显示新旧版本并询问是否自动更新；确认则执行 `pip install --upgrade`，拒绝则保留当前版本继续启动。
+- `agent.enabled=false` 时跳过安装/更新引导，仅做检测与配置展示。
+
+```text
+◆ [2/3] 检测 scienceflow 安装
+  ⚠ 未检测到 scienceflow（包名 scienceflow）
+
+  ⚠ 需要安装 scienceflow 才能运行 agent 任务
+  Python        /usr/local/bin/python (3.12.13)
+  安装命令      python -m pip install --pre scienceflow
+  ? 是否自动安装 scienceflow？ [Y/n]
+```
+
+命令开关：
+
+| 参数 | 默认 | 说明 |
+|------|------|------|
+| `-bootstrap` | `true` | 是否执行启动引导；后台/服务化部署可设 `-bootstrap=false` |
+| `-yes` | `false` | 所有确认自动回答"是"（无人值守自动安装/更新，隐含开启 bootstrap） |
+
+非交互环境（stdin 为 `/dev/null`、nohup/systemd）不会挂起等待输入：缺失 scienceflow 时打印手动安装命令并以退出码 1 结束；有可用更新时跳过更新、保留当前版本继续启动。设置 `NO_COLOR=1` 可关闭彩色输出。
+
 ### 后台 / 守护运行
 
 ```powershell
@@ -106,6 +133,8 @@ Start-Process -FilePath .\lgw.exe `
 # 方式三：Linux 上交给 systemd/supervisor 托管，或用 nohup 后台运行
 #   nohup ./lgw -config config.json > lgw.out.log 2>&1 &
 ```
+
+> 后台运行建议加 `-bootstrap=false`（跳过交互引导）或 `-yes`（无人值守自动安装/更新）。
 
 ### 停止
 
@@ -272,8 +301,8 @@ curl -N "http://127.0.0.1:8080/events?session=$sid"
 | `agent.python` | 解释器命令（支持 `uv run python`） | `python` |
 | `agent.module` | CLI 模块 | `scienceflow.cli` |
 | `agent.command` | 子命令：`repl` / `run` | `repl` |
-| `agent.config_yaml` | 传给 CLI 的 `-c` 配置 yaml 路径 | 空 |
-| `agent.repo_root` | 子进程工作目录（ScienceFlow 仓库根） | **必填** |
+| `agent.config_yaml` | 传给 CLI 的 `-c` 配置 yaml 路径；留空时使用安装包内置配置（site-packages 模式） | 空 |
+| `agent.repo_root` | 子进程工作目录（ScienceFlow 源码仓根，源码包会遮蔽 site-packages）。**留空 = 安装包模式**：子进程 cwd 回退到任务工作区，`python -m scienceflow.cli` 从 site-packages 解析模块 | 空 |
 | `agent.workspace_root` | 覆盖 `$SCIFLOW_WORKSPACE_ROOT`；为空时读环境变量 | 空 |
 | `agent.input_data_dir` | 可选 `-d` 共享数据根 | 空 |
 | `agent.exp_id` | 可选 `--exp-id` | 空 |
@@ -281,6 +310,13 @@ curl -N "http://127.0.0.1:8080/events?session=$sid"
 | `agent.max_concurrent` | 同时运行的 agent 子进程上限 | `4` |
 | `agent.max_queue` | 并发满后的等待队列上限；超出返回 `503` | `16` |
 | `agent.log_dir_name` | workspace 下日志子目录名 | `task_logs` |
+| `agent.model_store_path` | 模型 registry 文件路径；默认跟随安装版 CLI 的官方位置，`/models` 接口直接读写该文件 | `~/.config/scienceflow/models.json`（或 `$XDG_CONFIG_HOME/scienceflow/models.json`） |
+
+### 模型配置（/models 接口 ↔ 官方 registry）
+
+`/models` CRUD、`POST /models/{id}/activate` 与 `GET|PUT /models/stages` 直接管理安装版 scienceflow CLI 读取的同一份模型 registry（schema v1，权限 `0600`）：`model_name→alias/model`、`api_url/api_key→endpoints.code[0]`、激活模型→`defaults.code_models/feedback_models` 队首。`/models/stages` 的 per-session code/feedback 阶段模型选择在任务启动时物化为 per-task registry 副本（`<workspace_root>/task_logs/<user>/<session>/xdg/`，经 `XDG_CONFIG_HOME` 注入子进程），不污染共享 registry，API key 也不会进入 manifest/工作区（与上游"keys 不进 manifest/session/report"的约定一致）。
+
+> 注意：旧版网关通过 `CODE_MODEL`/`FEEDBACK_*` 环境变量注入模型配置，安装版 CLI（0.2.0b5+）不消费这些变量，已移除。
 
 ### 接口
 
@@ -316,6 +352,13 @@ $SCIFLOW_WORKSPACE_ROOT/task_logs/<user>/<session>/RAW.log
 ```
 
 该文件被 gateway 的 tailer 自动监听（源名 `agent-logs`），新增的每一行通过 SSE `event: log` 推送至已订阅该源的会话。前端无需轮询，打开 SSE 连接即可实时看到 agent 的逐行输出。
+
+**双 transcript**：安装版 CLI（0.2.0b5+）在 `--plain` 模式下 stdout 几乎为空（仅 banner 与一行提示），完整交互（user/assistant/tool 轮次）写入 `<session>/run/.logs/interaction.log`。因此任务启动时 gateway 同时 tail 两个文件，均经 SSE `event: log` 推送，以 `file` 字段区分：
+
+- `RAW.log`：stdout/stderr 镜像（banner、API 报错、traceback、任务 header）
+- `interaction.log`：完整交互记录；推送前会剥离 ANSI 色彩码与 loguru 时间戳前缀，保留 `[user] ...`、`[tool-call] ...`、`[assistant] ...`、工具输出等有效载荷
+
+SSE 事件与 backfill 均携带 `session` 字段做跨会话隔离。注意：前端旧版聊天解析器（`agentLogParser.ts`）面向源码仓时代的 RAW.log 格式（`=== Task: ===`/`→ tool`/`## Summary`），对接安装版交互格式需相应适配。
 
 SSE 消息示例（`file` 字段为 `RAW.log`）：
 

@@ -10,6 +10,8 @@ import {
   gatewayStartStream,
   gatewayStopStream,
   gatewayFetchFiles,
+  gatewayTestConnection,
+  type GatewayHealth,
   type GatewaySourceInfo,
   type GatewaySession,
 } from '../api/gateway';
@@ -65,6 +67,7 @@ interface GatewayState {
 
   connect: (userName: string, password: string) => Promise<void>;
   disconnect: () => Promise<void>;
+  testConnection: () => Promise<GatewayHealth>;
   setSubscribedSources: (sources: string[]) => Promise<void>;
   fetchSessionList: () => Promise<void>;
   nameSessionFromQuery: (sessionId: string, query: string) => void;
@@ -84,7 +87,7 @@ interface GatewayState {
   clearFileTree: () => void;
 }
 
-const EMPTY_PARSED_LOG: ParsedAgentLog = { headers: [], segments: [], toolCalls: [], reasoningBlocks: [], summary: '', raw: '', runStarts: [] };
+const EMPTY_PARSED_LOG = { format: 'v2' as const, runs: [], toolCalls: [], raw: '' };
 
 export const useGatewayStore = create<GatewayState>((set, get) => ({
   status: 'idle',
@@ -157,6 +160,21 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
       sources: [],
       subscribedSources: [],
     });
+  },
+
+  // Probes the gateway server (GET /healthz) and mirrors the result into the
+  // shared status so the topbar indicator updates from the settings dialog.
+  testConnection: async () => {
+    set({ status: 'connecting' });
+    try {
+      const health = await gatewayTestConnection();
+      set({ status: 'connected', lastError: '' });
+      return health;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      set({ status: 'error', lastError: message });
+      throw e;
+    }
   },
 
   setSubscribedSources: async (sources) => {

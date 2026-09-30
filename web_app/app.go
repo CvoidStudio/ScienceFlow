@@ -2,68 +2,45 @@ package main
 
 import (
 	"context"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// App holds the desktop application state: the shared context, the configured
-// backend base URL, and the chat SSE bridge.
+// App holds the desktop application state: the shared context and the
+// configured gateway base URL. All agent interaction (invoke + transcript)
+// flows through the log gateway; there is no backend chat bridge anymore.
 type App struct {
 	ctx        context.Context
-	baseURL    string
 	gatewayURL string
-	stream     *chatStreamManager
 	gwStream   *gatewayStreamManager
 }
 
-// NewApp creates the application struct. The backend base URL is resolved from
-// config.json (next to the executable, then the working directory), falling
-// back to http://127.0.0.1:8200.
+// NewApp creates the application struct. The gateway base URL is resolved
+// from app_config.yaml (next to the executable, then the working directory),
+// falling back to the built-in default.
 func NewApp() *App {
 	return &App{
-		baseURL:    resolveBaseURL(),
 		gatewayURL: resolveGatewayURL(),
 	}
 }
 
-// startup is called when the app starts. It saves the context so we can call
-// the Wails runtime (EventsEmit) and initialises the SSE bridges.
-func (a *App) startup(ctx context.Context) {
+// ServiceStartup implements the Wails v3 service lifecycle. It saves the
+// context so we can call the runtime and initialises the SSE bridges.
+func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	a.ctx = ctx
-	a.stream = newChatStreamManager(ctx)
 	a.gwStream = newGatewayStreamManager(ctx)
+	return nil
 }
 
-// shutdown stops the SSE bridges when the app quits.
-func (a *App) shutdown(ctx context.Context) {
-	if a.stream != nil {
-		a.stream.Stop()
-	}
+// ServiceShutdown stops the SSE bridges when the app quits.
+func (a *App) ServiceShutdown() error {
+	a.shutdown()
+	return nil
+}
+
+func (a *App) shutdown() {
 	if a.gwStream != nil {
 		a.gwStream.Stop()
-	}
-}
-
-// SetBackendURL changes the backend base URL at runtime.
-func (a *App) SetBackendURL(url string) {
-	a.baseURL = normalizeBaseURL(url, defaultBackendURL)
-}
-
-// GetBackendURL returns the currently configured backend base URL.
-func (a *App) GetBackendURL() string {
-	return a.baseURL
-}
-
-// StartChatStream (re)starts the backend chat SSE stream for the given session.
-func (a *App) StartChatStream(sessionID string, token string) {
-	if a.stream == nil {
-		return
-	}
-	a.stream.Start(a.gatewayURL, sessionID, token)
-}
-
-// StopChatStream stops the current backend chat SSE stream.
-func (a *App) StopChatStream() {
-	if a.stream != nil {
-		a.stream.Stop()
 	}
 }
 

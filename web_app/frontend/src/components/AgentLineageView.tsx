@@ -1,6 +1,6 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
 import { useGatewayStore } from '../store/useGatewayStore';
-import { getHeader, formatToolArgPreview } from '../utils/agentLogParser';
+import { formatToolArgPreview } from '../utils/agentLogParser';
 import clsx from 'clsx';
 import { Terminal, FileText, Pencil, FileEdit, Search, FolderOpen, List, Code, Wrench } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -29,12 +29,12 @@ export function AgentLineageView() {
   }, [parsedLog]);
 
   const toolCalls = parsedLog.toolCalls;
-  const headers = parsedLog.headers;
-  const task = getHeader(headers, 'Task');
-  const finalStatus = getHeader(headers, 'Final Status');
-  const exitCode = getHeader(headers, 'Exit Code');
+  const lastRun = useMemo(
+    () => (parsedLog.runs.length > 0 ? parsedLog.runs[parsedLog.runs.length - 1] : null),
+    [parsedLog],
+  );
 
-  const grouped = groupByTool(toolCalls);
+  const grouped = useMemo(() => groupByTool(toolCalls), [toolCalls]);
 
   if (toolCalls.length === 0) {
     return (
@@ -55,9 +55,8 @@ export function AgentLineageView() {
       <div style={{ display: 'flex', gap: 16, padding: '8px 14px', borderBottom: '1px solid var(--line)', flexShrink: 0, flexWrap: 'wrap' }}>
         <Stat label="Steps" value={String(toolCalls.length)} />
         <Stat label="Tools" value={String(grouped.length)} />
-        {task && <Stat label="Task" value={task} />}
-        {finalStatus && <Stat label="Status" value={finalStatus} accent={finalStatus === 'completed' ? 'green' : finalStatus === 'killed' ? 'red' : undefined} />}
-        {exitCode && exitCode !== '0' && <Stat label="Exit" value={exitCode} accent="red" />}
+        {lastRun?.taskId && <Stat label="Task" value={lastRun.taskId.replace(/^task-/, '').slice(-12)} />}
+        {lastRun?.mode && <Stat label="Mode" value={lastRun.mode} />}
       </div>
 
       {/* Step timeline */}
@@ -111,6 +110,7 @@ export function AgentLineageView() {
                     <IconComp size={13} />
                     <strong style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text)' }}>{tc.tool}</strong>
                     <span className="dim" style={{ fontSize: 10 }}>step {i + 1}</span>
+                    <span className="dim" style={{ fontSize: 10, fontFamily: 'var(--mono)' }}>R{tc.runIndex + 1}</span>
                   </div>
                   <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--soft)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
                     {formatToolArgPreview(tc.tool, tc.args)}

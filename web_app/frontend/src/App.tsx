@@ -7,6 +7,7 @@ import { BatchPanel } from './components/BatchPanel';
 import { AgentMapView } from './components/AgentMapView';
 import { ReportViewer } from './components/ReportViewer';
 import { L1Workspace } from './components/L1Workspace';
+import { WorkspaceTabs } from './components/WorkspaceTabs';
 import { SettingsModal } from './components/SettingsModal';
 import { StatePanel } from './components/StatePanel';
 import { SessionPanel } from './components/SessionPanel';
@@ -14,7 +15,6 @@ import { LoginPage } from './components/LoginPage';
 import * as api from './api/client';
 import { setGatewayURL } from './api/gateway';
 import { useGatewayStore } from './store/useGatewayStore';
-import { useSSE } from './hooks/useSSE';
 import { useGatewayStream } from './hooks/useGatewayStream';
 import { useFileSync } from './hooks/useFileSync';
 import { usePolling } from './hooks/usePolling';
@@ -29,11 +29,10 @@ export default function App() {
     currentView, setView, frontTab, setFrontTab,
     batchPanelCollapsed, setBatchPanelCollapsed,
     settingsPanelOpen, statePanelOpen, sessionsPanelOpen,
-    fetchHealth, fetchSettings, refreshState,
+    refreshState,
     chatSessionId, setChatSessionId,
     setSessionsPanelOpen,
     currentState,
-    panelLayout,
     selectedRunIndex,
     reportList, selectedReportPath, fetchReportContent,
   } = useAppStore();
@@ -104,7 +103,6 @@ export default function App() {
     })();
   }, [authStatus]);
 
-  useSSE();
   useGatewayStream();
   useFileSync();
   usePolling(refreshState, { interval: STATE_POLL_MS, enabled: authStatus === 'authenticated' });
@@ -196,7 +194,6 @@ export default function App() {
     ? `${summary.nodes || 0} nodes \u00b7 ${summary.runs || 0} runs \u00b7 ${summary.status || 'attached'}`
     : 'No workspace attached';
   const timelineEvents: TimelineEvent[] = state?.timeline || [];
-  const chatLeft = panelLayout === 'chat-left';
 
   const handleSelectRun = (index: number) => {
     useAppStore.getState().selectRun(index);
@@ -243,7 +240,6 @@ export default function App() {
             'workspace-frame',
             (currentView === 'l0' || currentView === 'l1') && 'batch-hidden',
             batchPanelCollapsed ? 'batch-collapsed' : 'batch-open',
-            chatLeft && 'chat-left',
           )}
         >
           {currentView !== 'l1' && (
@@ -267,6 +263,7 @@ export default function App() {
             >
               <div className="front-stage">
                 <section className="card front-card front-hero">
+                  <WorkspaceTabs />
                   <div className="card-body">
                     <div className="report-shell">
                       <div className="report-panel">

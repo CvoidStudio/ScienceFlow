@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -14,11 +15,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
-const defaultBackendURL = "http://127.0.0.1:8200"
-
-// ProxyRequest is a generic HTTP request forwarded to the ScienceFlow backend.
+// ProxyRequest is a generic HTTP request forwarded to the ScienceFlow gateway.
 type ProxyRequest struct {
 	Method  string            `json:"method"`
 	Path    string            `json:"path"`
@@ -83,8 +84,9 @@ type FilePayload struct {
 	Data        string `json:"data"`
 }
 
-// Proxy forwards an arbitrary HTTP request to the backend and returns the raw
-// response body. It is used for all JSON/text endpoints.
+// Proxy forwards an arbitrary HTTP request to the log gateway and returns the
+// raw response body. It is used for all JSON/text endpoints (the gateway
+// reverse-proxies /api/* to the ScienceFlow backend when needed).
 func (a *App) Proxy(req ProxyRequest) (ProxyResponse, error) {
 	method := strings.ToUpper(strings.TrimSpace(req.Method))
 	if method == "" {
@@ -441,37 +443,35 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
-// appConfig is the optional config.json schema.
+// appConfig is the optional app_config.yaml schema.
 type appConfig struct {
-	Backend string `json:"backend"`
-	Gateway string `json:"gateway"`
+	Gateway string `yaml:"gateway"`
 }
 
-// resolveBaseURL resolves the backend base URL from config.json, falling back
-// to the default.
-func resolveBaseURL() string {
-	if path := locateConfigFile(); path != "" {
-		if raw, err := os.ReadFile(path); err == nil {
-			var cfg appConfig
-			if json.Unmarshal(raw, &cfg) == nil {
-				return normalizeBaseURL(cfg.Backend, defaultBackendURL)
-			}
-		}
+// loadAppConfig reads app_config.yaml once. The file is looked up next to the
+// executable first, then in the working directory. A missing or invalid file
+// yields an empty config so callers fall back to their defaults.
+func loadAppConfig() appConfig {
+	path := locateConfigFile()
+	if path == "" {
+		return appConfig{}
 	}
-	return defaultBackendURL
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("app_config: read %s: %v", path, err)
+		return appConfig{}
+	}
+	var cfg appConfig
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		log.Printf("app_config: parse %s: %v", path, err)
+		return appConfig{}
+	}
+	return cfg
 }
 
-// resolveGatewayURL resolves the log gateway base URL from config.json.
+// resolveGatewayURL resolves the log gateway base URL from app_config.yaml.
 func resolveGatewayURL() string {
-	if path := locateConfigFile(); path != "" {
-		if raw, err := os.ReadFile(path); err == nil {
-			var cfg appConfig
-			if json.Unmarshal(raw, &cfg) == nil {
-				return normalizeBaseURL(cfg.Gateway, defaultGatewayURL)
-			}
-		}
-	}
-	return defaultGatewayURL
+	return normalizeBaseURL(loadAppConfig().Gateway, defaultGatewayURL)
 }
 
 func normalizeBaseURL(raw string, fallback string) string {
@@ -482,16 +482,17 @@ func normalizeBaseURL(raw string, fallback string) string {
 	return b
 }
 
-// locateConfigFile finds config.json next to the executable, then in the CWD.
+// locateConfigFile finds app_config.yaml next to the executable, then in the
+// CWD.
 func locateConfigFile() string {
 	if exe, err := os.Executable(); err == nil {
-		p := filepath.Join(filepath.Dir(exe), "config.json")
+		p := filepath.Join(filepath.Dir(exe), "app_config.yaml")
 		if _, err := os.Stat(p); err == nil {
 			return p
 		}
 	}
-	if _, err := os.Stat("config.json"); err == nil {
-		return "config.json"
+	if _, err := os.Stat("app_config.yaml"); err == nil {
+		return "app_config.yaml"
 	}
 	return ""
 }

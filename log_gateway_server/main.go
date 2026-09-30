@@ -12,6 +12,7 @@ import (
 
 	"log_gateway_server/internal/agent"
 	"log_gateway_server/internal/auth"
+	"log_gateway_server/internal/bootstrap"
 	"log_gateway_server/internal/config"
 	"log_gateway_server/internal/filewatch"
 	"log_gateway_server/internal/hub"
@@ -22,6 +23,8 @@ import (
 
 func main() {
 	cfgPath := flag.String("config", "config.json", "path to config file")
+	bootstrapOn := flag.Bool("bootstrap", true, "run the startup bootstrap: Python/scienceflow environment detection, optional install/upgrade guidance, config summary")
+	assumeYes := flag.Bool("yes", false, "auto-answer bootstrap prompts (unattended install/upgrade; implies -bootstrap)")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "[log_gateway] ", log.LstdFlags)
@@ -29,6 +32,20 @@ func main() {
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
 		logger.Fatalf("load config: %v", err)
+	}
+
+	// Startup bootstrap (see internal/bootstrap): banner, Python/scienceflow
+	// environment detection with optional pip install/upgrade after user
+	// confirmation, then a summary of the effective configuration. Skippable
+	// with -bootstrap=false for service/nohup deployments that must not
+	// touch stdin.
+	if *assumeYes {
+		*bootstrapOn = true
+	}
+	if *bootstrapOn {
+		if err := bootstrap.Run(cfg, bootstrap.Options{AssumeYes: *assumeYes}); err != nil {
+			logger.Fatalf("startup bootstrap: %v", err)
+		}
 	}
 
 	reg, err := tailer.NewRegistry(cfg.Registry.Path, cfg.Registry.FlushInterval.Duration)
@@ -65,14 +82,21 @@ func main() {
 			cfg.Agent.Python, cfg.Agent.Module, cfg.Agent.Command, cfg.Agent.RepoRoot,
 			cfg.Agent.MaxConcurrent, cfg.Agent.MaxQueue)
 
-		// Dynamic RAW.log tracking: instead of a static glob that tails every
-		// session's RAW.log, we register the "agent-logs" source name up front
-		// (so ACL/subscription filtering works from login) and attach/detach
-		// individual files as tasks start/finish.
+		// Dynamic per-session log tracking: instead of a static glob that
+		// tails every session's files, we register the "agent-logs" source
+		// name up front (so ACL/subscription filtering works from login) and
+		// attach/detach individual files as tasks start/finish. Two
+		// transcripts are streamed per task: RAW.log (stdout/stderr: banners,
+		// errors, tracebacks) and run/.logs/interaction.log (the installed
+		// CLI's full interaction record — user/assistant/tool turns — which
+		// does NOT reach stdout in --plain mode).
 		t.RegisterSourceName(agent.RawLogSource)
 		agentRunner.OnTaskStart = func(task *agent.Task) {
 			if task.RawLogPath != "" {
 				t.WatchFile(task.RawLogPath, agent.RawLogSource, 100*time.Millisecond)
+			}
+			if p := task.InteractionLogPath(); p != "" {
+				t.WatchFile(p, agent.RawLogSource, 100*time.Millisecond)
 			}
 		}
 		agentRunner.OnTaskFinish = func(task *agent.Task) {
@@ -80,6 +104,9 @@ func main() {
 				// Keep tailing briefly so the final flushed lines reach SSE
 				// before the harvester is detached.
 				t.UnwatchFileAfter(task.RawLogPath, 10*time.Second)
+			}
+			if p := task.InteractionLogPath(); p != "" {
+				t.UnwatchFileAfter(p, 10*time.Second)
 			}
 		}
 	}

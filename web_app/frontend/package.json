@@ -6,12 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:dev": "tsc -b && vite build --minify false --mode development",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "@wailsio/runtime": "^3.0.0-beta.25",
     "antd": "^6.5.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.39.0",
