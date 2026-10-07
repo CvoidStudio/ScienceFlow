@@ -1,175 +1,293 @@
-<h1 align="center">ScienceFlow</h1>
+## ScienceFlow 网关服务 + 桌面客户端
 
-<p align="center"><b>An End-to-End Autoresearch Agent Framework</b></p>
+本分支（`app`）是 ScienceFlow 的**应用发行分支**，包含两个可独立构建、协同工作的组件：
 
-<p align="center">
-  <a href="https://www.noahlab.com.hk/news/212"><b>Project News</b></a>
-  ·
-  <a href="https://arxiv.org/abs/2608.14354"><b>Paper (arXiv)</b></a>
-  ·
-  <a href="doc/README_CN.md"><b>Chinese</b></a>
-</p>
+| 组件 | 目录 | 说明 | 技术栈 |
+|---|---|---|---|
+| 日志/任务网关 | [`log_gateway_server/`](log_gateway_server/) | 多用户鉴权、会话管理、日志 SSE 实时推流，并负责按需拉起 ScienceFlow 智能体子进程 | Go（单二进制） |
+| 桌面控制台 | [`web_app/`](web_app/) | Agent Map、对话轨迹、工作区文件、监控面板 | Wails v3 + React 18 + Vite 6 |
 
-ScienceFlow is an end-to-end autoresearch agent framework for productive, stable, and goal-aligned research over hours or days. It organizes research around recoverable executable workspaces, coupling persistent state, adaptive exploration, and evidence-aware execution control so agents can continue, redirect, or recover without losing validated progress.
+> **ScienceFlow 智能体**（研究框架本体）通过 pip 分发，安装命令：`pip install scienceflow`。
+> 网关在启动引导阶段会自动检测并（可选）安装/更新它。
 
-Across machine learning, scientific modeling, and mathematical optimization, ScienceFlow sustains effective long-horizon research and reaches **70.22 ± 1.18% Any-Medal** on the full 75-task MLE-bench within a 24-hour budget, exceeding the strongest reported baseline by **4.92 percentage points**.
+---
 
-<p align="center">
-  <img src="doc/scienceflow/assets/mlebench_top10_any_medal.png" alt="Representative full MLE-bench Any-Medal leaderboard" width="100%">
-</p>
-<p align="center"><sub><b>Figure 1a. Full MLE-bench Any-Medal leaderboard.</b> Mean ± SEM over three independent runs for ScienceFlow.</sub></p>
-
-## News
-
-- **[2026-08]** ScienceFlow is open source — the framework code, task packages, and documentation are available in this repository.
-- **[2026-08]** The ScienceFlow paper is available on [arXiv](https://arxiv.org/abs/2608.14354).
-
-## Core concepts
-
-1. **Recoverable executable state.** Each persistent LNR worker advances research in an isolated executable workspace. An archived state binds that workspace to compact memory, validation evidence, and resource records.
-2. **Stage Gate.** A task-specific result signal invokes `GateService`: the configured Evaluator produces normalized evidence, and the Gate policy decides admission. An accepted result materializes an immutable Stage with ledger facts and a recoverable workspace snapshot.
-3. **ESTRA.** At a research boundary, Executable-State Transition through Re-Anchoring makes a two-axis decision: a start point (the current workspace or an archived Stage) and an intent (`continue` or `redirect`). Selecting an archived start point restores its executable state before the next research segment.
-4. **Persistent memory.** Add records accepted Stage progress. Fold keeps recent, best-validated, and anchor-relevant evidence explicit while summarizing older records; Unfold/restore retrieves indexed evidence and state, and Assemble constructs the anchor-specific context for the next segment.
-5. **Evidence-aware execution control.** Research workers choose scientific routes, while the controller admits, leases, monitors, timeboxes, and stops physical jobs using resource availability, remaining budget, validated progress, and recoverability. Valid worker states are finalized under `merge/finals/final_*`.
-
-## System architecture
-
-<p align="center">
-  <img src="doc/scienceflow/assets/scienceflow_system_architecture.png" alt="ScienceFlow system architecture" width="100%">
-</p>
-<p align="center"><sub><b>Figure 2. ScienceFlow system architecture.</b> Research workers operate over recoverable executable states and adapt long-horizon trajectories through boundary-triggered ESTRA transitions, while evidence-aware execution control coordinates physical resource allocation and runtime execution.</sub></p>
-
-## Design boundaries
-
-- LNR is **no-skill by default**: `lnr_skill_tool_enabled: false` and `lnr_skill_auto_read: false`.
-- `.scienceflow/skills/data_processing/` is retained only for the dedicated data-prep agent and validation-split workflow.
-- `auto` is the default evaluator backend and resolves registered tasks to `task_package`; `artifact_command` remains available for generic command-based evaluation.
-- Parallel runs bind CPU/GPU resources at task level, then split CPU capacity across workers. GPU leases support controlled sharing by multiple workers.
-- Result signals may create Stages without a submission when the task contract permits it. Merge can only emit finals from candidates that carry the required artifact.
-
-## Repository layout
+## 架构与数据流
 
 ```text
-ScienceFlow/
-├── scienceflow/                         # Framework runtime
-│   ├── core/                            # Agent runtime, tools, memory, and execution
-│   ├── solver/                          # LNR, Stage lifecycle, ESTRA, resume, and merge
-│   ├── gates/                           # Stage Gate and Evaluator plugins
-│   ├── safety/                          # Evidence-aware resource and execution control
-│   ├── ui/                              # Monitor and trace interfaces
-│   ├── config/                          # Defaults and example manifests
-│   ├── utils/                           # Shared runtime utilities
-│   └── cli.py                           # Command-line entry point
-├── tasks/                               # Task packages and evaluators
-├── scripts/                             # Maintained run and monitor manifests
-├── .scienceflow/skills/data_processing/ # Data-preparation skills
-└── doc/scienceflow/                     # Detailed architecture documentation
+                       pip install scienceflow
+  ┌────────────────┐  ◀──────────────────────────────  ┌───────────────────────┐
+  │ ScienceFlow    │      子进程: python -m             │  log_gateway_server   │
+  │ Agent CLI      │      scienceflow.cli repl          │  ─ 鉴权 / 会话         │
+  └───────┬────────┘                                    │  ─ 日志 SSE 推流       │
+          │ RAW.log / interaction.log                   │  ─ agent 任务调度      │
+          ▼                                             └───────────┬───────────┘
+  ┌────────────────┐                                                │ SSE + REST
+  │ workspaces/    │  每用户/会话独立工作区                          ▼
+  │ task_logs/...  │                                    ┌───────────────────────┐
+  └────────────────┘                                    │  web_app (Wails v3)   │
+                                                        │  桌面控制台（前端 UI） │
+                                                        └───────────────────────┘
 ```
 
-## Installation
+1. 用户在桌面端发送消息，网关在 `workspaces/<user>/<session>/` 下生成运行清单并拉起安装版 ScienceFlow 智能体；
+2. 智能体运行过程中的 stdout/stderr 与完整交互记录分别写入 `task_logs/<user>/<session>/RAW.log` 与 `<session>/run/.logs/interaction.log`；
+3. 网关监听这两个文件，经 SSE 实时推送给已订阅的桌面端会话；桌面端解析日志重建对话与执行轨迹（Agent Map、消息块、监控面板）。
 
-**Requirements:** Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+---
+
+## 环境要求
+
+| 依赖 | 版本 | 用途 |
+|---|---|---|
+| Python + pip | 3.11+ | 运行 ScienceFlow 智能体（`pip install scienceflow`） |
+| Go | 网关 1.22+；桌面端 1.25+ | 编译网关与桌面应用 |
+| Node.js + npm | 20 LTS+ | 构建桌面端前端 |
+| [Wails v3 CLI](https://v3.wails.io) | `v3.0.0-beta.25` | 构建桌面应用 |
+| NSIS（可选） | 任意近期版本 | `wails3 package` 生成 Windows 安装包 |
+| WebView2 Runtime | — | 桌面应用运行时（Windows 10/11 通常已内置） |
+
+安装 Wails CLI（版本需与 `web_app/go.mod` 一致）：
 
 ```bash
-# Install uv if you do not have it yet
-curl -LsSf https://astral.sh/uv/install.sh | sh   # or: pip install uv
-
-# Clone the repository and enter the project
-git clone https://github.com/huawei-noah/noah-research.git
-cd noah-research/ScienceFlow
-
-# Configure LLM credentials
-cp env.example .env   # then edit .env: set API_KEY and BASE_URL for your provider
-
-# Create .venv and install the locked environment
-uv sync
+go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.25
 ```
 
-Notes:
+---
 
-- `uv sync` installs the locked `uv.lock` environment, including the in-repo `deepcraft` subpackages, the official `mlebench` Git revision, and the full test/ML stack.
-- PyTorch wheels default to the **cu128** index (for CUDA 12.8-era drivers). Adjust `[[tool.uv.index]]` in `pyproject.toml` if you need a different CUDA build.
-- SciModelingBench support is an optional extra: `uv sync --extra scientific-design`.
-- Run commands either via `uv run ...` or by using `.venv/bin/python` directly.
-
-## Quick start
-
-Start an interactive research REPL:
+## 一、安装 ScienceFlow 智能体
 
 ```bash
-uv run python -m scienceflow.cli repl
+# 安装（当前发布通道为预发布版本，建议加 --pre）
+pip install scienceflow
+# 或：python -m pip install --pre scienceflow
 ```
 
-Run the maintained two-worker Nomad2018 example:
+验证安装：
 
 ```bash
-uv run python -m scienceflow.cli parallel -m scripts/lnr.yaml -j 1
+python -c "import scienceflow, importlib.metadata as m; print(m.version('scienceflow'))"
 ```
 
-Monitor an existing run:
+网关的**启动引导**会自动完成检测、安装与更新（详见下文 `-bootstrap` / `-yes` 参数）：
+
+```text
+◆ [2/3] 检测 scienceflow 安装
+  ⚠ 未检测到 scienceflow（包名 scienceflow）
+  Python        /usr/local/bin/python (3.12.13)
+  安装命令      python -m pip install --pre scienceflow
+  ? 是否自动安装 scienceflow？ [Y/n]
+```
+
+> 若使用自定义解释器或 `uv`，请设置网关配置中的 `agent.python`（如 `"uv run python"`）。
+
+---
+
+## 二、构建并部署网关服务（log_gateway_server）
+
+### 1. 构建
 
 ```bash
-uv run python -m scienceflow.cli monitor --manifest scripts/lnr.yaml --refresh 5
+cd log_gateway_server
+
+# Windows
+go build -o lgw.exe .
+
+# Linux（可交叉编译）
+GOOS=linux GOARCH=amd64 go build -o lgw .
 ```
 
-Prepare a dataset with the dedicated data-prep agent:
+产物为**单一可执行文件**，无运行时依赖（registry 检查点除外，见下）。
+
+### 2. 配置
+
+网关读取 `config.json`（用 `-config` 指定路径），核心配置段：
+
+```jsonc
+{
+  "server": { "host": "0.0.0.0", "port": 52001, "sse_path": "/events" },
+  "auth":   { "enabled": true, "file": "AUTH.yaml", "token_ttl": "24h" },
+  "agent": {
+    "enabled": true,
+    "python": "python",                 // 或 "uv run python"
+    "workspace_root": "../workspaces",  // 工作区根目录（也可用环境变量 SCIFLOW_WORKSPACE_ROOT）
+    "timeout": "3600s",
+    "max_concurrent": 4
+  },
+  "inputs": [ /* 可选：样例日志源（prefixed-logs / raw-logs / plain-text） */ ],
+  "registry": { "path": "./data/registry.json" }
+}
+```
+
+用户账号位于 `AUTH.yaml`（与网关鉴权、桌面端登录共用）：
+
+```yaml
+admin: admin123            # 简化写法：可读所有源
+sciflow: "123456"
+# 完整写法（按源授权）：
+# viewer:
+#   password: viewer456
+#   sources: ["prefixed-logs", "plain-text"]
+```
+
+> `inputs` 中的样例日志源仅用于演示 SSE 能力；对接智能体任务时必需的是 `agent` 段与 `agent-logs` 源（网关自动接管）。
+> **部署前请务必修改 `AUTH.yaml` 中的示例口令。**
+
+### 3. 运行
 
 ```bash
-uv run python -m scienceflow.cli parallel -m scripts/prep.yaml -j 1
+# 前台运行（交互式启动引导：检测/安装/更新 scienceflow）
+./lgw.exe -config config.json
+
+# 后台 / 服务化部署：跳过交互引导
+./lgw.exe -config config.json -bootstrap=false
+
+# 无人值守：自动确认安装/更新
+./lgw.exe -config config.json -yes
 ```
 
-Run the self-contained Circle Packing math-optimization example (no dataset or optional extra required):
+健康检查：
 
 ```bash
-uv run python tasks/opt_solver/_tools/prepare_math_opt_solver_tasks.py
-uv run python -m scienceflow.cli parallel \
-  -m scienceflow/config/examples/tasks_circle_packing_example.yaml -j 1
+curl http://127.0.0.1:52001/healthz
+# {"status":"ok","subscribers":0}
 ```
 
-The prepare step writes a tiny task package (`problem.json` plus a valid baseline) under `./data/opt_solver/`. The agent then iteratively improves `artifacts/best_solution.json`, and the system-side evaluator authoritatively validates each candidate and scores it by the sum of radii.
+### 4. 服务化部署
 
-## Configuration essentials
+推荐的部署目录结构：
 
-| Setting | Purpose |
-|---|---|
-| `lnr.num_workers` | Number of persistent research workers inside one task. |
-| `task.cpu_list` / `task.gpu_list` | Task-level CPU and GPU resource boundaries; LNR further splits CPU across workers. |
-| `lnr.omp_threads_cap` | CPU thread cap for each worker slice. |
-| `lnr.wall_clock_budget_sec` | Total wall-clock budget for the LNR process. |
-| `lnr.estra_enabled` / `estra_trigger_stage_count` | Enables ESTRA and sets the trigger for boundary review and context folding. |
-| `lnr.resource_runtime_enabled` | Enables evidence-aware resource and execution control. |
-| `resume_budget_policy` | Budget accounting for resumed runs; `fresh` adds this round's `time_limit` on top of accumulated time. |
-| `evaluator.backend` | Selects `auto` (default), `task_package`, or `artifact_command`. |
-| `evaluator.stage_source_mode` | Selects the `shadow`, `adjudicate`, or `primary` Stage source mode. |
-| `evaluator.command.python_executable` | Points a task at an isolated Python environment. |
-| `profile_overrides.<profile>` | Overrides prompts, Evaluator, and resource behavior per task type. |
-| `tasks/**/task.yaml` | Declares the task-level artifact, metric, provider/profile, Evaluator, and Gate policy. |
-| `metric.authoritative: true` | Marks a metric as authoritative evidence eligible for high-trust selection. |
+```text
+gateway/
+├── lgw.exe              # 网关二进制
+├── config.json          # 网关配置（端口须与桌面端一致）
+├── AUTH.yaml            # 用户账号
+├── logs/                # 可选：演示日志源
+├── data/registry.json   # 采集检查点（自动生成，建议持久化）
+└── workspaces/          # 任务工作区根目录（见 agent.workspace_root）
+```
 
-## Documentation
+- **Windows**：用 [NSSM](https://nssm.cc/) / WinSW 注册为服务（工作目录设为上述目录，参数 `-config config.json -bootstrap=false`），或 `Start-Process` 后台重定向日志；
+- **Linux**：`systemd` 单元或 `nohup ./lgw -config config.json > lgw.out.log 2>&1 &`；
+- 重启安全：采集 offset 持久化在 `registry.path`，优雅退出会落盘检查点，重启后无缝续读。
 
-[Architecture overview](doc/scienceflow/index.html) · [Recoverable states and LNR](doc/scienceflow/module-lnr.html) · [Evidence-aware execution control](doc/scienceflow/module-resource.html) · [Adding optimization tasks](doc/scienceflow/module-opt-solver-onboarding.html) · [SciModelingBench](tasks/sci_modeling_bench/README.md)
+### 5. 生产部署要点
 
-## Paper task coverage
+1. `registry.path` 指向持久化目录（容器场景挂载 volume）；
+2. `inputs[].path` 使用绝对路径；
+3. 对外暴露时经反向代理（Nginx/Caddy）加 TLS 与鉴权；SSE 已内置 `X-Accel-Buffering: no`；
+4. 网关为单实例有状态（检查点），多实例共读同一批日志会导致重复推送。
 
-The paper evaluates the same ScienceFlow workflow across three classes of executable research tasks:
+> 完整配置字段、SSE 协议、控制面 API（`/login`、`/sessions/*`、`/models/*`、`/invoke` 等）见 **[log_gateway_server/README.md](log_gateway_server/README.md)**。
 
-- **Machine learning engineering:** all 75 [MLE-bench](https://github.com/openai/mle-bench) tasks through the pipeline-construction interface.
-- **Scientific modeling and design:** 12 [SciModelingBench tasks on Hugging Face](https://huggingface.co/datasets/sci-modeling-bench/design-bench) through the candidate-optimization interface.
-- **Mathematical and engineering optimization:** [Circle Packing](https://github.com/algorithmicsuperintelligence/openevolve/tree/main/examples/circle_packing), [Ratio Minimization](https://github.com/algorithmicsuperintelligence/openevolve/tree/main/examples/alphaevolve_math_problems/minimizing_max_min_dist), [Uncertainty Inequality](https://github.com/algorithmicsuperintelligence/openevolve/tree/main/examples/alphaevolve_math_problems/uncertainty_ineq), and the easy, medium, and hard [SpOC4 KTTSP](https://www.esa.int/gsp/ACT/news/spoc-2026/) tracks through the candidate-optimization interface.
+---
 
-All task families share the Stage Gate and Evaluator contract. Each `task.yaml` keeps provider/profile, artifact schema, metric direction, evaluator backend, authoritative status, and Gate policy outside the generic solver.
+## 三、构建并部署桌面应用（web_app）
 
-## Operational notes
-
-- MLE-bench tasks require the data root, task `exp_id`, and `submission.csv` contract to be aligned.
-- Do not resume old workspaces across different task profiles, or prompts, datasets, or artifact dimensions may be inherited incorrectly.
-- `stopped_by_user` marks a resumable terminal state from a manual stop, not a failure; a later resume should continue from the accumulated budget in `state.json` and the workspace stages.
-
-## Verification
+### 1. 开发模式
 
 ```bash
-uv run pytest -q
+cd web_app
+wails3 dev
 ```
 
-The project uses Python 3.11+, Pydantic, OmegaConf, Click, and Rich. The official `mlebench` dependency is pinned to a Git revision in `uv.lock`; the optional `scientific-design` extra provides SciModelingBench, Datasets, and PyArrow support. Command-based optimization tasks may use a separate Python environment injected through the evaluator configuration, with task-specific schema/scoring logic kept inside the `tasks/<category>/...` task package.
+- 热重载；前端源码在 `frontend/`，Go 侧在 `web_app/` 根目录；
+- 开发构建脚本位于 `build/`（已随仓库提供），绑定代码由 `wails3 generate bindings -ts` 自动生成到 `frontend/bindings/`；
+- **请勿**直接用浏览器打开 Vite 地址：Wails 运行时绑定不存在，接口不可用。
+
+### 2. 生产构建
+
+```bash
+cd web_app
+wails3 build            # 产物：bin/scienceflow_gui.exe（Windows）
+wails3 package          # 生成 NSIS 安装包（需安装 makensis）
+```
+
+`wails3 build` 会依次完成：前端依赖安装 → TypeScript 绑定生成 → 前端构建（`frontend/dist`）→ 图标/版本资源（`build/config.yml` 的 `info` 段）→ Go 编译（`-tags production -H windowsgui`）。
+
+### 3. 部署布局
+
+```text
+scienceflow-gui/
+├── scienceflow_gui.exe
+├── app_config.yaml          # 网关地址（与 exe 同目录，其次当前工作目录）
+└── themes/
+    └── backgrounds/         # 可选：Agent 地图背景图（文件名即设置中的选项名）
+```
+
+`app_config.yaml`：
+
+```yaml
+gateway: http://127.0.0.1:52001   # 必须与网关 config.json 的 server.port 一致
+```
+
+- 未找到配置文件时使用内置默认 `http://127.0.0.1:8080`，也可在应用内设置中运行时修改；
+- `themes/backgrounds/` 目录在首次运行时自动创建，放入 PNG/JPG/WebP 等图片即可在「设置 → 背景图片」中选择；未放置时使用内置默认背景；
+- 登录账号与网关 `AUTH.yaml` 一致（如示例 `admin / admin123`）。
+
+### 4. 验证
+
+1. 启动网关，`curl http://127.0.0.1:52001/healthz` 返回 `ok`；
+2. 启动桌面应用，登录后打开「设置 → 测试连接」：仅探测网关连通性，顶栏状态指示同步显示 `已连接`；
+3. 在对话面板发送消息，网关拉起智能体后，Agent Map、执行轨迹与「日志」页签将实时回放运行过程。
+
+---
+
+## 四、端到端快速开始（Linux 示例）
+
+```bash
+# 1) 安装智能体
+python -m pip install --pre scienceflow
+
+# 2) 构建并启动网关（首次启动自动校验 scienceflow）
+cd log_gateway_server
+go build -o lgw .
+./lgw -config config.json -yes &
+curl http://127.0.0.1:52001/healthz
+
+# 3) 构建桌面应用并部署
+cd ../web_app
+wails3 build
+mkdir -p dist && cp bin/scienceflow_gui.exe dist/
+cp app_config.yaml dist/
+# 将 dist/ 拷贝到目标机器运行（Windows 需 WebView2 Runtime）
+```
+
+---
+
+## 仓库结构
+
+```text
+.
+├── log_gateway_server/        # 网关服务（Go）
+│   ├── main.go                # 入口：config / registry / hub / tailer / server 装配
+│   ├── internal/              # auth / session / agent / tailer / server / hub ...
+│   ├── config.json            # 示例配置（端口 52001）
+│   └── AUTH.yaml              # 示例账号
+├── web_app/                   # 桌面应用（Wails v3）
+│   ├── main.go / app.go / gateway.go / proxy.go / themes.go ...
+│   ├── build/                 # Wails 构建脚手架（Taskfile、图标、info.json）
+│   ├── frontend/              # React + Vite 前端（src/、bindings/）
+│   ├── app_config.yaml        # 网关地址
+│   └── Taskfile.yml           # build / dev / package 入口
+├── workspaces/                # 运行期任务工作区（不入库）
+└── data/                      # 运行期数据（不入库）
+```
+
+## 测试
+
+```bash
+cd log_gateway_server && go test ./...
+cd ../web_app && go test ./...          # themes 解析等单元测试
+cd frontend && npm run typecheck        # 前端类型检查
+```
+
+## 相关文档
+
+- [log_gateway_server/README.md](log_gateway_server/README.md)：网关完整配置、鉴权与会话模型、SSE 消息格式、agent 调度与 `/models` registry 对接；
+- [web_app/README.md](web_app/README.md)：桌面端架构与实现细节；
+- ScienceFlow 框架源码与论文：<https://arxiv.org/abs/2608.14354>。
+
+## License
+
+[MIT License](LICENSE)
