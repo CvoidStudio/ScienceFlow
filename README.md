@@ -192,7 +192,7 @@ wails3 dev
 ```
 
 - 热重载；前端源码在 `frontend/`，Go 侧在 `web_app/` 根目录；
-- 开发构建脚本位于 `build/`（已随仓库提供），绑定代码由 `wails3 generate bindings -ts` 自动生成到 `frontend/bindings/`；
+- 开发构建脚本位于 `build/`（Wails 标准构建脚手架；该目录未入库，缺失时用 Wails CLI 恢复/初始化）；绑定代码由 `wails3 generate bindings -ts` 自动生成到 `frontend/bindings/`；
 - **请勿**直接用浏览器打开 Vite 地址：Wails 运行时绑定不存在，接口不可用。
 
 ### 2. 生产构建
@@ -204,6 +204,24 @@ wails3 package          # 生成 NSIS 安装包（需安装 makensis）
 ```
 
 `wails3 build` 会依次完成：前端依赖安装 → TypeScript 绑定生成 → 前端构建（`frontend/dist`）→ 图标/版本资源（`build/config.yml` 的 `info` 段）→ Go 编译（`-tags production -H windowsgui`）。
+
+#### 仅构建前端 dist（可选，无需 Wails CLI）
+
+若只需要前端产物（CI 校验、或供其他流程嵌入），可独立构建；产物与 `wails3 build` 内嵌的完全一致（相同 `frontend/bindings`、相同输出目录 `frontend/dist`）：
+
+```bash
+cd web_app/frontend
+npm ci                 # 或 npm install
+npm run build:dist     # → frontend/dist
+```
+
+已安装 Wails CLI 时，也可从 `web_app/` 目录使用等价入口：
+
+```bash
+wails3 task build:frontend
+```
+
+> `frontend/bindings/` 为已入库的生成物，独立构建直接复用；若 Go 侧接口有变更，以 `wails3 build`（会自动重新生成绑定）为准。`frontend/dist` 被 Git 忽略；纯浏览器打开 `dist/index.html` 不可用（无 Wails 运行时，接口与 SSE 均不可达）。
 
 ### 3. 部署布局
 

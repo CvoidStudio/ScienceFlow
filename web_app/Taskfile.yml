@@ -23,6 +23,13 @@ tasks:
     cmds:
       - task: "{{.GOOS}}:build"
 
+  build:frontend:
+    summary: Builds only the frontend into frontend/dist (same artifact wails3 build embeds; no Wails CLI needed)
+    dir: frontend
+    cmds:
+      - test -d node_modules || npm install
+      - npm run build:dist
+
   package:
     summary: Packages a production build of the application
     cmds:
