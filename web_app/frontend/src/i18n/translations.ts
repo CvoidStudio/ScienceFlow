@@ -281,6 +281,7 @@ export interface Translations {
     modelNamePlaceholder: string;
     coderModel: string;
     feedbackModel: string;
+    noStageModel: string;
     apiKey: string;
     apiKeyPlaceholder: string;
     apiUrl: string;
@@ -624,6 +625,7 @@ export const zhCN: Translations = {
     modelNamePlaceholder: '请输入模型名称',
     coderModel: 'Coder 模型',
     feedbackModel: 'Feedbacker 模型',
+    noStageModel: '暂无模型',
     apiKey: 'API Key',
     apiKeyPlaceholder: '请输入 API Key',
     apiUrl: '模型路径',
@@ -967,6 +969,7 @@ export const enUS: Translations = {
     modelNamePlaceholder: 'Enter model name',
     coderModel: 'Coder Model',
     feedbackModel: 'Feedbacker Model',
+    noStageModel: 'No model',
     apiKey: 'API Key',
     apiKeyPlaceholder: 'Enter API key',
     apiUrl: 'Model Url',

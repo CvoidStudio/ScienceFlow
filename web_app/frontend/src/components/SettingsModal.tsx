@@ -330,9 +330,16 @@ export function SettingsModal() {
                   onChange={(e) => void handleStageChange(e.target.value, selectedFeedbackId)}
                   disabled={modelsLoading || activatingModel || models.length === 0}
                 >
-                  {models.map((item) => (
-                    <option key={item.id} value={item.id}>{item.model_name}</option>
-                  ))}
+                  {models.length === 0 ? (
+                    <option value="">{modelsLoading ? t.settingsModal.loadingModels : t.settingsModal.noStageModel}</option>
+                  ) : (
+                    <>
+                      {!selectedCoderId && <option value="" disabled hidden>{t.settingsModal.noStageModel}</option>}
+                      {models.map((item) => (
+                        <option key={item.id} value={item.id}>{item.model_name}</option>
+                      ))}
+                    </>
+                  )}
                 </select>
               </div>
               <div className="field">
@@ -342,9 +349,16 @@ export function SettingsModal() {
                   onChange={(e) => void handleStageChange(selectedCoderId, e.target.value)}
                   disabled={modelsLoading || activatingModel || models.length === 0}
                 >
-                  {models.map((item) => (
-                    <option key={item.id} value={item.id}>{item.model_name}</option>
-                  ))}
+                  {models.length === 0 ? (
+                    <option value="">{modelsLoading ? t.settingsModal.loadingModels : t.settingsModal.noStageModel}</option>
+                  ) : (
+                    <>
+                      {!selectedFeedbackId && <option value="" disabled hidden>{t.settingsModal.noStageModel}</option>}
+                      {models.map((item) => (
+                        <option key={item.id} value={item.id}>{item.model_name}</option>
+                      ))}
+                    </>
+                  )}
                 </select>
               </div>
             </div>

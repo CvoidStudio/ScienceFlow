@@ -505,7 +505,10 @@ function ChatTranscript({ busy }: { busy: boolean }) {
           // backend embeds the route mode into the logged query.
           const stripMode = (s: string) => s.replace(/^\[mode=\S+\]\s*/, '');
           const found = runs.find(
-            (r) => !claimed.has(r.index) && stripMode(r.query) === msg.content,
+            (r) =>
+              !claimed.has(r.index) &&
+              r.queryConfirmed &&
+              stripMode(r.query) === msg.content,
           );
           if (found) runIndex = found.index;
         }

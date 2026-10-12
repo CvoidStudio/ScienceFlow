@@ -504,6 +504,44 @@ export function parseAgentLog(raw: string): ParsedAgentLog {
     if (run) flushPendingThought(run);
   }
 
+  // Fold empty RAW-header runs into the matching confirmed run. RAW.log's
+  // stdout mirror can duplicate the [user] confirmation, which strands an
+  // empty header-only run in front of the real one (backfill replays RAW.log
+  // before interaction.log); the UI would claim the blank run and render an
+  // activity card that never grows.
+  const isEmptyHeaderRun = (r: ParsedAgentRun) =>
+    !r.steps.length && !r.answer && !r.stopMarker && !r.queryConfirmed && !!r.taskId;
+  const folded: ParsedAgentRun[] = [];
+  for (const run of runs) {
+    if (isEmptyHeaderRun(run)) {
+      const target = folded.find((r) => !isEmptyHeaderRun(r) && r.query === run.query);
+      if (target) {
+        if (!target.taskId) target.taskId = run.taskId;
+        if (!target.mode) target.mode = run.mode;
+        if (!target.startedAt) target.startedAt = run.startedAt;
+        continue;
+      }
+      folded.push(run);
+      continue;
+    }
+    // Content run arriving after its stranded header-only twin (RAW.log
+    // replays before interaction.log): absorb the twin's task identity.
+    const stranded = folded.findIndex((r) => isEmptyHeaderRun(r) && r.query === run.query);
+    if (stranded >= 0) {
+      const empty = folded[stranded];
+      if (!run.taskId) run.taskId = empty.taskId;
+      if (!run.mode) run.mode = empty.mode;
+      if (!run.startedAt) run.startedAt = empty.startedAt;
+      folded.splice(stranded, 1);
+    }
+    folded.push(run);
+  }
+  runs.length = 0;
+  runs.push(...folded);
+  runs.forEach((r, i) => {
+    r.index = i;
+  });
+
   // Collect flat tool calls.
   for (const run of runs) {
     for (const step of run.steps) {
