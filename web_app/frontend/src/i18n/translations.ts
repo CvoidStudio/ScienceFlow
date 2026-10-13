@@ -28,6 +28,13 @@ export interface Translations {
     loginFailed: string;
     cachedHint: string;
     engineName: string;
+    gatewayLabel: string;
+    gatewayEdit: string;
+    gatewayChecking: string;
+    gatewayReachable: string;
+    gatewayUnreachable: string;
+    gatewaySave: string;
+    gatewayCancel: string;
   };
   agentMap: {
     imgAlt: string;
@@ -372,6 +379,13 @@ export const zhCN: Translations = {
     loginFailed: '登录失败',
     cachedHint: '登录状态缓存 7 天',
     engineName: 'ScienceFlow 智能体引擎',
+    gatewayLabel: '网关',
+    gatewayEdit: '修改网关地址',
+    gatewayChecking: '正在检测网关…',
+    gatewayReachable: '网关可达',
+    gatewayUnreachable: '网关不可达',
+    gatewaySave: '保存网关地址',
+    gatewayCancel: '取消',
   },
   agentMap: {
     imgAlt: 'Agent地图工作空间',
@@ -716,6 +730,13 @@ export const enUS: Translations = {
     loginFailed: 'Login failed',
     cachedHint: 'Login state cached for 7 days',
     engineName: 'ScienceFlow Agent Engine',
+    gatewayLabel: 'Gateway',
+    gatewayEdit: 'Edit gateway address',
+    gatewayChecking: 'Checking gateway...',
+    gatewayReachable: 'Gateway reachable',
+    gatewayUnreachable: 'Gateway unreachable',
+    gatewaySave: 'Save gateway address',
+    gatewayCancel: 'Cancel',
   },
   agentMap: {
     imgAlt: 'Agent map workspace',

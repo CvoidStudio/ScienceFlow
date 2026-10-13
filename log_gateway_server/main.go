@@ -23,7 +23,7 @@ import (
 
 func main() {
 	cfgPath := flag.String("config", "config.json", "path to config file")
-	bootstrapOn := flag.Bool("bootstrap", true, "run the startup bootstrap: Python/scienceflow environment detection, optional install/upgrade guidance, config summary")
+	bootstrapOn := flag.Bool("bootstrap", true, "run the startup bootstrap: Python/scienceflow environment detection, optional install/upgrade guidance, startup-port check, config summary")
 	assumeYes := flag.Bool("yes", false, "auto-answer bootstrap prompts (unattended install/upgrade; implies -bootstrap)")
 	flag.Parse()
 
@@ -36,9 +36,10 @@ func main() {
 
 	// Startup bootstrap (see internal/bootstrap): banner, Python/scienceflow
 	// environment detection with optional pip install/upgrade after user
-	// confirmation, then a summary of the effective configuration. Skippable
-	// with -bootstrap=false for service/nohup deployments that must not
-	// touch stdin.
+	// confirmation, listening-port selection and conflict resolution, then a
+	// summary of the effective configuration. Skippable with
+	// -bootstrap=false for service/nohup deployments that must not touch
+	// stdin.
 	if *assumeYes {
 		*bootstrapOn = true
 	}

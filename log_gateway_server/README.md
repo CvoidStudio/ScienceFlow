@@ -33,10 +33,10 @@ log_gateway_server/
 
 ```powershell
 # 1. 编译
-go build -o lgw.exe .
+go build -o scienceflow_lgw.exe .
 
 # 2. 运行
-.\lgw.exe -config config.json
+.\scienceflow_lgw.exe -config config.json
 ```
 
 另开一个终端推流：
@@ -79,35 +79,39 @@ go run . -config config.json
 
 ```powershell
 # 当前平台
-go build -o lgw.exe .
+go build -o scienceflow_lgw.exe .
 
 # 交叉编译（示例：目标 Linux amd64）
-$env:GOOS="linux"; $env:GOARCH="amd64"; go build -o lgw .; Remove-Item Env:GOOS,Env:GOARCH
+$env:GOOS="linux"; $env:GOARCH="amd64"; go build -o scienceflow_lgw .; Remove-Item Env:GOOS,Env:GOARCH
 ```
 
 ### 前台运行
 
 ```powershell
-.\lgw.exe -config config.json
+.\scienceflow_lgw.exe -config config.json
 ```
 
 ### 启动引导（scienceflow 环境自检）
 
-`lgw` 启动时默认先执行一次引导流程：检测 `agent.python` 解释器（显示解析后的真实路径与版本）→ 检测 scienceflow 安装与版本 → 查询索引最新版本（scienceflow 只发预发布版，自动回退 `--pre`）→ 按需安装/更新 → 打印网关配置总览后进入服务流程。
+`scienceflow_lgw` 启动时默认先执行一次引导流程：检测 `agent.python` 解释器（显示解析后的真实路径与版本）→ 检测 scienceflow 安装与版本 → 查询索引最新版本（scienceflow 只发预发布版，自动回退 `--pre`）→ 按需安装/更新 → 配置启动端口并检测占用 → 打印网关配置总览后进入服务流程。
 
 - **未安装**：显示 Python 路径与 pip 安装命令，询问是否自动安装；确认则执行 `pip install`，拒绝则打印手动命令并以退出码 1 结束。
 - **有更新**：显示新旧版本并询问是否自动更新；确认则执行 `pip install --upgrade`，拒绝则保留当前版本继续启动。
+- **启动端口**：交互式运行可自定义端口（默认 `8901`，回车采用默认）；非交互/`-yes` 运行使用 `config.json` 的 `server.port`。
+- **端口被占用**：显示占用进程的名称、PID 与完整命令，询问是否中止（默认否）。确认后先发 `SIGTERM`（Windows 用 `taskkill`），超时未退出再强制终止，并等待端口真正释放后才继续；拒绝则打印 `kill <pid>` 等手动命令并以退出码 1 结束。非交互/`-yes` 模式**永不**自动中止进程，遇占用直接报错退出。
 - `agent.enabled=false` 时跳过安装/更新引导，仅做检测与配置展示。
 
 ```text
-◆ [2/3] 检测 scienceflow 安装
-  ⚠ 未检测到 scienceflow（包名 scienceflow）
-
-  ⚠ 需要安装 scienceflow 才能运行 agent 任务
-  Python        /usr/local/bin/python (3.12.13)
-  安装命令      python -m pip install --pre scienceflow
-  ? 是否自动安装 scienceflow？ [Y/n]
+◆ [4/4] 配置启动端口
+  ? 启动端口 [8901]
+  ⚠ 端口 8901 已被以下进程占用
+  进程          scienceflow_lgw（PID 7147）
+  命令          ./scienceflow_lgw -config config.json
+  ? 是否中止该进程以释放端口 8901？ [y/N]
+  ✓ 端口 8901 已释放
 ```
+
+端口中止的安全性：端口号与 PID 均做数值校验（PID 仅来自系统工具解析，绝不拼接进 shell）；拒绝 PID<2 及自身 PID；发送信号前会再次核对占用者 PID，防止 PID 复用误杀；只对占用端口的那个进程发信号。
 
 命令开关：
 
@@ -116,22 +120,22 @@ $env:GOOS="linux"; $env:GOARCH="amd64"; go build -o lgw .; Remove-Item Env:GOOS,
 | `-bootstrap` | `true` | 是否执行启动引导；后台/服务化部署可设 `-bootstrap=false` |
 | `-yes` | `false` | 所有确认自动回答"是"（无人值守自动安装/更新，隐含开启 bootstrap） |
 
-非交互环境（stdin 为 `/dev/null`、nohup/systemd）不会挂起等待输入：缺失 scienceflow 时打印手动安装命令并以退出码 1 结束；有可用更新时跳过更新、保留当前版本继续启动。设置 `NO_COLOR=1` 可关闭彩色输出。
+非交互环境（stdin 为 `/dev/null`、nohup/systemd）不会挂起等待输入：缺失 scienceflow 时打印手动安装命令并以退出码 1 结束；有可用更新时跳过更新、保留当前版本继续启动；端口被占用时打印手动中止命令并以退出码 1 结束（不会自动杀进程）。设置 `NO_COLOR=1` 可关闭彩色输出。
 
 ### 后台 / 守护运行
 
 ```powershell
 # 方式一：Windows 后台进程（日志重定向到文件）
-Start-Process -FilePath .\lgw.exe `
+Start-Process -FilePath .\scienceflow_lgw.exe `
   -ArgumentList "-config", "config.json" `
   -WorkingDirectory (Get-Location) `
-  -RedirectStandardOutput "lgw.out.log" -RedirectStandardError "lgw.err.log"
+  -RedirectStandardOutput "scienceflow_lgw.out.log" -RedirectStandardError "scienceflow_lgw.err.log"
 
-# 方式二：注册为 Windows 服务（用 NSSM / WinSW 包裹 lgw.exe，
+# 方式二：注册为 Windows 服务（用 NSSM / WinSW 包裹 scienceflow_lgw.exe，
 #         工作目录设为项目根目录，参数设 -config config.json）
 
 # 方式三：Linux 上交给 systemd/supervisor 托管，或用 nohup 后台运行
-#   nohup ./lgw -config config.json > lgw.out.log 2>&1 &
+#   nohup ./scienceflow_lgw -config config.json > scienceflow_lgw.out.log 2>&1 &
 ```
 
 > 后台运行建议加 `-bootstrap=false`（跳过交互引导）或 `-yes`（无人值守自动安装/更新）。
@@ -139,7 +143,7 @@ Start-Process -FilePath .\lgw.exe `
 ### 停止
 
 ```powershell
-Stop-Process -Name lgw
+Stop-Process -Name scienceflow_lgw
 ```
 
 > 收到 Ctrl+C / SIGTERM 时会优雅退出：关闭 HTTP、停掉所有 harvester、把 registry 检查点落盘，重启后从上次 offset 无缝续读。

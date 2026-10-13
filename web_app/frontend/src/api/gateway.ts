@@ -25,6 +25,7 @@ import {
   GatewayDeleteModel,
   WorkspaceDownload,
   WorkspaceUploadFiles,
+  GetGatewayURL,
   SetGatewayURL,
   GetSystemStats,
 } from '../../bindings/scienceflow/app';
@@ -329,8 +330,14 @@ export async function workspaceUploadFiles(
   return WorkspaceUploadFiles(token, sessionId, targetDir, uploadedFiles) as Promise<WorkspaceUploadResult>;
 }
 
-export function setGatewayURL(url: string): void {
-  void SetGatewayURL(url || '');
+export function setGatewayURL(url: string): Promise<void> {
+  return SetGatewayURL(url || '');
+}
+
+// getGatewayURL returns the Go-side resolved gateway base URL (app_config.yaml
+// value or the runtime override).
+export function getGatewayURL(): Promise<string> {
+  return GetGatewayURL();
 }
 
 // Auth failures are signalled by the gateway with HTTP 401 and the fixed body

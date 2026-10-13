@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, Form, Input, Button, Typography, App } from 'antd';
 import { UserOutlined, LockOutlined, LoginOutlined } from '@ant-design/icons';
-import { Languages } from 'lucide-react';
+import { Languages, Pencil, Check, X } from 'lucide-react';
 import * as api from '../api/client';
+import { setGatewayURL, getGatewayURL, gatewayTestConnection } from '../api/gateway';
 import { useAppStore } from '../store/useAppStore';
 import { useT } from '../i18n/useT';
 import type { Lang } from '../i18n/translations';
 import type { AuthUser } from '../types';
 
 const { Title, Text } = Typography;
+
+type GatewayProbe = 'idle' | 'checking' | 'ok' | 'fail';
 
 interface LoginPageProps {
   onSuccess: (token: string, user: AuthUser, userName: string, password: string) => void;
@@ -20,6 +23,71 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
   const { message: msgApi } = App.useApp();
   const { language, setLanguage } = useAppStore();
   const t = useT();
+
+  // ── Gateway address (display + runtime configuration) ──
+  const [gatewayUrl, setGatewayUrl] = useState('');
+  const [editingGateway, setEditingGateway] = useState(false);
+  const [gatewayDraft, setGatewayDraft] = useState('');
+  const [probe, setProbe] = useState<GatewayProbe>('idle');
+  const [probeDetail, setProbeDetail] = useState('');
+  const mountedRef = useRef(true);
+
+  const probeGateway = useCallback(async () => {
+    setProbe('checking');
+    setProbeDetail('');
+    try {
+      const health = await gatewayTestConnection();
+      if (!mountedRef.current) return;
+      setProbe('ok');
+      setProbeDetail(`${health.latency_ms}ms`);
+    } catch (e: unknown) {
+      if (!mountedRef.current) return;
+      setProbe('fail');
+      setProbeDetail((e as Error)?.message || '');
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    try {
+      getGatewayURL()
+        .then((url) => {
+          if (!mountedRef.current) return;
+          setGatewayUrl(url);
+          void probeGateway();
+        })
+        .catch(() => { /* runtime unavailable */ });
+    } catch { /* runtime unavailable */ }
+    return () => { mountedRef.current = false; };
+  }, [probeGateway]);
+
+  const handleGatewaySave = useCallback(async () => {
+    let next = gatewayDraft.trim();
+    if (!next) {
+      setEditingGateway(false);
+      return;
+    }
+    if (!/^https?:\/\//i.test(next)) next = `http://${next}`;
+    next = next.replace(/\/+$/, '');
+    setGatewayUrl(next);
+    setEditingGateway(false);
+    try {
+      await setGatewayURL(next);
+    } catch { /* ignore */ }
+    try {
+      localStorage.setItem('scienceflow.gatewayBase', next);
+    } catch { /* ignore */ }
+    void probeGateway();
+  }, [gatewayDraft, probeGateway]);
+
+  const probeTitle =
+    probe === 'checking'
+      ? t.login.gatewayChecking
+      : probe === 'ok'
+        ? `${t.login.gatewayReachable}${probeDetail ? ` · ${probeDetail}` : ''}`
+        : probe === 'fail'
+          ? `${t.login.gatewayUnreachable}${probeDetail ? `: ${probeDetail}` : ''}`
+          : '';
 
   const toggleLang = useCallback(() => {
     const next: Lang = language === 'en-US' ? 'zh-CN' : 'en-US';
@@ -200,6 +268,64 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
             <Text type="secondary" style={{ fontSize: 11, fontFamily: 'var(--mono)' }}>
               {t.login.cachedHint}
             </Text>
+          </div>
+
+          <div className="login-gw-bar">
+            {editingGateway ? (
+              <>
+                <input
+                  className="login-gw-input"
+                  value={gatewayDraft}
+                  autoFocus
+                  spellCheck={false}
+                  placeholder="http://127.0.0.1:52001"
+                  aria-label={t.login.gatewayEdit}
+                  onChange={(e) => setGatewayDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleGatewaySave();
+                    if (e.key === 'Escape') setEditingGateway(false);
+                  }}
+                />
+                <button
+                  className="login-gw-btn primary"
+                  type="button"
+                  title={t.login.gatewaySave}
+                  aria-label={t.login.gatewaySave}
+                  onClick={() => void handleGatewaySave()}
+                >
+                  <Check size={14} />
+                </button>
+                <button
+                  className="login-gw-btn"
+                  type="button"
+                  title={t.login.gatewayCancel}
+                  aria-label={t.login.gatewayCancel}
+                  onClick={() => setEditingGateway(false)}
+                >
+                  <X size={14} />
+                </button>
+              </>
+            ) : (
+              <>
+                <span className={`login-gw-dot ${probe}`} title={probeTitle} />
+                <span className="login-gw-label">{t.login.gatewayLabel}</span>
+                <span className="login-gw-url" title={gatewayUrl || undefined}>
+                  {gatewayUrl || '—'}
+                </span>
+                <button
+                  className="login-gw-edit"
+                  type="button"
+                  title={t.login.gatewayEdit}
+                  aria-label={t.login.gatewayEdit}
+                  onClick={() => {
+                    setGatewayDraft(gatewayUrl);
+                    setEditingGateway(true);
+                  }}
+                >
+                  <Pencil size={12} />
+                </button>
+              </>
+            )}
           </div>
         </Card>
 

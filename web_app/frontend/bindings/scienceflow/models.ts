@@ -880,8 +880,7 @@ export class ProxyResponse {
 
 /**
  * SystemStats carries live resource usage of the local machine running the
- * desktop app: overall CPU load, memory usage, and storage of the Windows
- * system drive (normally C:\).
+ * app: overall CPU load, memory usage and storage of the primary drive.
  */
 export class SystemStats {
     "cpu_percent": number;
