@@ -17,6 +17,7 @@ func main() {
 	// also overridable with WAILS_SERVER_HOST / WAILS_SERVER_PORT. The desktop
 	// build ignores these options.
 	serverHost, serverPort := resolveServerAddress()
+	log.Printf("ScienceFlow (%s): gateway=%s server(config)=%s:%d", buildMode, app.GetGatewayURL(), serverHost, serverPort)
 
 	wailsApp := application.New(application.Options{
 		Name: "ScienceFlow",

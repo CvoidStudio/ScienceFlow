@@ -118,7 +118,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T & 
           }
         })()
       : '';
-    throw new Error(message || `HTTP ${res.status}`);
+    throw new Error((message || `HTTP ${res.status}`).slice(0, 300));
   }
 
   const data = res.body ? JSON.parse(res.body) : {};
@@ -230,7 +230,12 @@ export async function validateAuth(): Promise<boolean> {
       path: '/sources',
       headers: { Authorization: `Bearer ${token}` },
     });
-    return res.status >= 200 && res.status < 300;
+    if (res.status < 200 || res.status >= 300) return false;
+    // A valid gateway answers with a JSON array. HTML bodies (SPA fallback or
+    // a reverse proxy page) mean the address is not the log gateway, so a
+    // cached token must not be treated as authenticated.
+    const data = JSON.parse(res.body || '[]');
+    return Array.isArray(data);
   } catch {
     return false;
   }
@@ -254,9 +259,19 @@ export async function login(username: string, password: string): Promise<{ token
           }
         })()
       : 'Login failed';
-    throw new Error(message);
+    throw new Error(message.slice(0, 300));
   }
-  const data = JSON.parse(res.body || '{}');
+  let data: { token?: string; expires_at?: string; user?: string };
+  try {
+    data = JSON.parse(res.body || '{}');
+  } catch {
+    throw new Error(
+      `Unexpected non-JSON response (HTTP ${res.status}): ${(res.body || '(empty)').slice(0, 200)}`,
+    );
+  }
+  if (!data.token) {
+    throw new Error(`Login response is missing a token: ${(res.body || '').slice(0, 200)}`);
+  }
   const user: AuthUser = {
     username: data.user || username,
     display_name: data.user || username,

@@ -100,6 +100,7 @@ export interface GatewayLogEvent {
 }
 
 export interface GatewayStatusEvent {
+  session_id?: string;
   status: 'connecting' | 'connected' | 'disconnected' | 'unauthorized';
   error?: string;
 }
@@ -346,6 +347,15 @@ export function getGatewayURL(): Promise<string> {
 export function isGatewayAuthError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return msg.includes('用户不存在或密码错误');
+}
+
+// Session-not-found failures (HTTP 404 with "session not found") mean the id
+// in the frontend is stale — typically the gateway restarted (stateless tokens
+// stay valid, in-memory sessions do not). Callers use this to rebuild the
+// session instead of retrying with the dead id.
+export function isGatewaySessionGone(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /404/.test(msg) && /session not found/i.test(msg);
 }
 
 // Decode a gateway log event into a single display line.
