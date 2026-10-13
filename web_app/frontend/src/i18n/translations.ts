@@ -26,6 +26,7 @@ export interface Translations {
     signIn: string;
     welcome: string;
     loginFailed: string;
+    invalidCredentials: string;
     cachedHint: string;
     engineName: string;
     gatewayLabel: string;
@@ -315,6 +316,7 @@ export interface Translations {
     modelActivated: string;
     loadingModels: string;
     noModels: string;
+    modelsUnsupported: string;
     close: string;
     reset: string;
     test: string;
@@ -377,6 +379,7 @@ export const zhCN: Translations = {
     signIn: '登录',
     welcome: '欢迎使用 ScienceFlow',
     loginFailed: '登录失败',
+    invalidCredentials: '用户名或密码不正确',
     cachedHint: '登录状态缓存 7 天',
     engineName: 'ScienceFlow 智能体引擎',
     gatewayLabel: '网关',
@@ -666,6 +669,7 @@ export const zhCN: Translations = {
     modelActivated: '模型已切换，新任务生效',
     loadingModels: '加载模型中...',
     noModels: '暂无模型',
+    modelsUnsupported: '当前网关版本不支持模型管理（缺少 /models 接口，请升级网关）',
     close: '关闭',
     reset: '重置',
     test: '测试连接',
@@ -728,6 +732,7 @@ export const enUS: Translations = {
     signIn: 'Sign In',
     welcome: 'Welcome to ScienceFlow',
     loginFailed: 'Login failed',
+    invalidCredentials: 'Incorrect username or password',
     cachedHint: 'Login state cached for 7 days',
     engineName: 'ScienceFlow Agent Engine',
     gatewayLabel: 'Gateway',
@@ -1017,6 +1022,7 @@ export const enUS: Translations = {
     modelActivated: 'Model switched; applies to new tasks',
     loadingModels: 'Loading models...',
     noModels: 'No models',
+    modelsUnsupported: 'This gateway build does not support model management (missing /models API; please upgrade the gateway)',
     close: 'Close',
     reset: 'Reset',
     test: 'Test Connection',

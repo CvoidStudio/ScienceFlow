@@ -180,6 +180,33 @@
       background: rgba(22, 119, 255, .12);
     }
 
+    /* ── login page inline error ── */
+    .login-error {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 0 0 16px;
+      padding: 9px 11px;
+      border: 1px solid rgba(255, 77, 79, .35);
+      border-radius: 8px;
+      background: rgba(255, 77, 79, .08);
+      color: #ff7875;
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+      animation: login-error-in .18s ease-out;
+    }
+
+    .login-error svg {
+      flex: none;
+      margin-top: 1px;
+    }
+
+    @keyframes login-error-in {
+      from { opacity: 0; transform: translateY(-3px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
     /* ── login page gateway bar ── */
     .login-gw-bar {
       display: flex;

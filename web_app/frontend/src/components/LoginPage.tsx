@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, Form, Input, Button, Typography, App } from 'antd';
 import { UserOutlined, LockOutlined, LoginOutlined } from '@ant-design/icons';
-import { Languages, Pencil, Check, X } from 'lucide-react';
+import { Languages, Pencil, Check, X, AlertCircle } from 'lucide-react';
 import * as api from '../api/client';
-import { setGatewayURL, getGatewayURL, gatewayTestConnection } from '../api/gateway';
+import { setGatewayURL, getGatewayURL, gatewayTestConnection, isGatewayAuthError } from '../api/gateway';
 import { useAppStore } from '../store/useAppStore';
 import { useT } from '../i18n/useT';
 import type { Lang } from '../i18n/translations';
@@ -19,6 +19,7 @@ interface LoginPageProps {
 
 export function LoginPage({ onSuccess }: LoginPageProps) {
   const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
   const [form] = Form.useForm();
   const { message: msgApi } = App.useApp();
   const { language, setLanguage } = useAppStore();
@@ -178,12 +179,17 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
 
   const handleLogin = useCallback(async (values: { username: string; password: string }) => {
     setLoading(true);
+    setLoginError('');
     try {
       const result = await api.login(values.username, values.password);
       msgApi.success(t.login.welcome);
       setTimeout(() => onSuccess(result.token, result.user, values.username, values.password), 400);
     } catch (e: unknown) {
-      msgApi.error((e as Error).message || t.login.loginFailed);
+      // Credential rejections (HTTP 401/403 or the gateway's fixed auth text)
+      // always surface the same unified message. The error stays visible in
+      // the card (not just a transient toast) until the next attempt/input.
+      const rejected = e instanceof api.InvalidCredentialsError || isGatewayAuthError(e);
+      setLoginError(rejected ? t.login.invalidCredentials : (e as Error).message || t.login.loginFailed);
     } finally {
       setLoading(false);
     }
@@ -250,7 +256,14 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
             {t.login.authRequired}
           </Title>
 
-          <Form form={form} onFinish={handleLogin} layout="vertical" size="large" autoComplete="off">
+          {loginError && (
+            <div className="login-error" role="alert" aria-live="assertive">
+              <AlertCircle size={14} />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          <Form form={form} onFinish={handleLogin} onValuesChange={() => setLoginError('')} layout="vertical" size="large" autoComplete="off">
             <Form.Item name="username" rules={[{ required: true, message: t.login.usernameRequired }]}>
               <Input prefix={<UserOutlined style={{ color: 'rgba(255,255,255,0.25)' }} />} placeholder={t.login.usernamePlaceholder} />
             </Form.Item>

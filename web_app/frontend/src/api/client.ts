@@ -241,6 +241,15 @@ export async function validateAuth(): Promise<boolean> {
   }
 }
 
+// InvalidCredentialsError marks a login rejection (HTTP 401/403). The UI maps
+// it to a single unified message instead of echoing the gateway text.
+export class InvalidCredentialsError extends Error {
+  constructor() {
+    super('invalid credentials');
+    this.name = 'InvalidCredentialsError';
+  }
+}
+
 export async function login(username: string, password: string): Promise<{ token: string; user: AuthUser }> {
   const res = await Proxy({
     method: 'POST',
@@ -248,6 +257,9 @@ export async function login(username: string, password: string): Promise<{ token
     body: JSON.stringify({ user_name: username, password }),
     headers: { 'Content-Type': 'application/json' },
   });
+  if (res.status === 401 || res.status === 403) {
+    throw new InvalidCredentialsError();
+  }
   if (res.status < 200 || res.status >= 300) {
     const bodyText = res.body || '';
     const message = bodyText

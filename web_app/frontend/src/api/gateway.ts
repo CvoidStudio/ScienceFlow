@@ -358,6 +358,14 @@ export function isGatewaySessionGone(err: unknown): boolean {
   return /404/.test(msg) && /session not found/i.test(msg);
 }
 
+// Endpoint-not-found failures (HTTP 404 without a session context) usually
+// mean the deployed gateway build predates the requested API (e.g. /models).
+// Callers use this to degrade gracefully instead of showing a raw error.
+export function isGatewayEndpointMissing(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /(^|\D)404(\D|$)/.test(msg) && !/session not found/i.test(msg);
+}
+
 // Decode a gateway log event into a single display line.
 export function formatGatewayLogEvent(e: GatewayLogEvent): string {
   const ts = e.timestamp ? e.timestamp.slice(11, 23) : '';
