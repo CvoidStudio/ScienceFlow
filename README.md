@@ -123,17 +123,21 @@ GOOS=linux GOARCH=amd64 go build -o scienceflow_lgw .
 }
 ```
 
-用户账号位于 `AUTH.yaml`（与网关鉴权、桌面端登录共用）：
+用户账号位于 `AUTH.yaml`（与网关鉴权、桌面端登录共用；**修改后热更新，无需重启**）：
 
 ```yaml
-admin: admin123            # 简化写法：可读所有源
-sciflow: "123456"
-# 完整写法（按源授权）：
+sciflow: "123456"          # 简化写法：可读所有源
+# 完整写法（按源授权 + 角色）：
 # viewer:
 #   password: viewer456
 #   sources: ["prefixed-logs", "plain-text"]
+
+admin:                     # 超级管理员：登录后可通过 /users 接口增删改账号
+  password: admin123
+  role: admin
 ```
 
+> 超级管理员登录后可用 `/users` 接口在线管理账号（新增 / 改密码 / 改权限 / 删除，即时生效），详见 [log_gateway_server/README.md](log_gateway_server/README.md#控制面接口bearer-token-鉴权)。
 > `inputs` 中的样例日志源仅用于演示 SSE 能力；对接智能体任务时必需的是 `agent` 段与 `agent-logs` 源（网关自动接管）。
 > **部署前请务必修改 `AUTH.yaml` 中的示例口令。**
 

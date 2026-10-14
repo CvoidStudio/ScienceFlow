@@ -9,7 +9,8 @@
     "file": "AUTH.yaml",
     "token_secret": "xxx",
     "token_ttl": "24h",
-    "session_ttl": "24h"
+    "session_ttl": "24h",
+    "reload_interval": "5s"
   },
   "backend": {
     "url": "http://127.0.0.1:8200"

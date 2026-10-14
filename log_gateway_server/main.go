@@ -71,6 +71,12 @@ func main() {
 		} else {
 			logger.Printf("auth enabled: %d user(s) loaded from %s", authStore.Count(), cfg.Auth.File)
 		}
+		// Hot reload: external edits to AUTH.yaml and mutations made through
+		// the admin /users API both take effect without restarting. Invalid
+		// edits are logged and ignored, keeping the current accounts active.
+		stopAuthReload := authStore.WatchReload(cfg.Auth.ReloadInterval.Duration, logger)
+		defer stopAuthReload()
+		logger.Printf("auth hot reload enabled: watching %s every %s", cfg.Auth.File, cfg.Auth.ReloadInterval.Duration)
 	}
 
 	sessions := session.NewManager(cfg.Auth.SessionTTL.Duration)
