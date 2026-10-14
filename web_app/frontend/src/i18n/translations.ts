@@ -329,6 +329,34 @@ export interface Translations {
     unknownError: string;
     ready: string;
   };
+  userAdmin: {
+    entry: string;
+    title: string;
+    close: string;
+    addUser: string;
+    editUser: string;
+    name: string;
+    namePlaceholder: string;
+    password: string;
+    passwordPlaceholder: string;
+    passwordEditPlaceholder: string;
+    role: string;
+    roleAdmin: string;
+    roleUser: string;
+    loading: string;
+    empty: string;
+    add: string;
+    save: string;
+    cancel: string;
+    edit: string;
+    delete: string;
+    confirmDelete: string;
+    created: string;
+    updated: string;
+    deleted: string;
+    failed: string;
+    lastAdminHint: string;
+  };
   statePanel: {
     stateDetails: string;
     close: string;
@@ -682,6 +710,34 @@ export const zhCN: Translations = {
     unknownError: '未知错误',
     ready: '就绪',
   },
+  userAdmin: {
+    entry: '用户管理',
+    title: '用户管理',
+    close: '关闭',
+    addUser: '新增用户',
+    editUser: '编辑用户',
+    name: '用户名',
+    namePlaceholder: '字母/数字开头，可含 . _ -',
+    password: '密码',
+    passwordPlaceholder: '登录密码',
+    passwordEditPlaceholder: '留空表示不修改',
+    role: '角色',
+    roleAdmin: '管理员',
+    roleUser: '普通用户',
+    loading: '加载中...',
+    empty: '暂无用户',
+    add: '新增',
+    save: '保存',
+    cancel: '取消',
+    edit: '编辑',
+    delete: '删除',
+    confirmDelete: '确定删除该用户吗？',
+    created: '用户已创建',
+    updated: '用户已更新',
+    deleted: '用户已删除',
+    failed: '失败',
+    lastAdminHint: '系统至少需保留一个管理员',
+  },
   statePanel: {
     stateDetails: '状态详情',
     close: '关闭',
@@ -1034,6 +1090,34 @@ export const enUS: Translations = {
     saved: 'Saved',
     unknownError: 'Unknown error',
     ready: 'Ready',
+  },
+  userAdmin: {
+    entry: 'User Management',
+    title: 'User Management',
+    close: 'Close',
+    addUser: 'Add User',
+    editUser: 'Edit User',
+    name: 'Username',
+    namePlaceholder: 'Starts with a letter/digit; may contain . _ -',
+    password: 'Password',
+    passwordPlaceholder: 'Login password',
+    passwordEditPlaceholder: 'Leave blank to keep unchanged',
+    role: 'Role',
+    roleAdmin: 'Administrator',
+    roleUser: 'User',
+    loading: 'Loading...',
+    empty: 'No users',
+    add: 'Add',
+    save: 'Save',
+    cancel: 'Cancel',
+    edit: 'Edit',
+    delete: 'Delete',
+    confirmDelete: 'Delete this user?',
+    created: 'User created',
+    updated: 'User updated',
+    deleted: 'User deleted',
+    failed: 'Failed',
+    lastAdminHint: 'At least one administrator must remain',
   },
   statePanel: {
     stateDetails: 'State Details',

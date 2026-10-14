@@ -273,7 +273,7 @@ export async function login(username: string, password: string): Promise<{ token
       : 'Login failed';
     throw new Error(message.slice(0, 300));
   }
-  let data: { token?: string; expires_at?: string; user?: string };
+  let data: { token?: string; expires_at?: string; user?: string; role?: string };
   try {
     data = JSON.parse(res.body || '{}');
   } catch {
@@ -288,6 +288,7 @@ export async function login(username: string, password: string): Promise<{ token
     username: data.user || username,
     display_name: data.user || username,
     created_at: data.expires_at || '',
+    role: data.role || 'user',
   };
   saveAuth(data.token, user);
   return { token: data.token, user };

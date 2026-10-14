@@ -34,6 +34,7 @@ type GatewayLoginResult struct {
 	Token     string   `json:"token"`
 	ExpiresAt string   `json:"expires_at"`
 	User      string   `json:"user"`
+	Role      string   `json:"role"`
 	Sources   []string `json:"sources"`
 }
 
