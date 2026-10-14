@@ -5,7 +5,7 @@ import { Upload, Tooltip, Dropdown } from 'antd';
 import type { UploadProps } from 'antd';
 import { useAppStore } from '../store/useAppStore';
 import { useGatewayStore } from '../store/useGatewayStore';
-import { gatewayInvokeAgent, gatewayStopAgent, workspaceUploadFiles } from '../api/gateway';
+import { gatewayInvokeAgent, gatewayStartStream, gatewayStopAgent, workspaceUploadFiles } from '../api/gateway';
 import { useT } from '../i18n/useT';
 import * as api from '../api/client';
 import { debug } from '../utils/debug';
@@ -138,6 +138,9 @@ export function ChatRail() {
     try {
       debug.log("ChatRail", "invoking agent on gateway session", targetSessionId, "mode=", taskMode);
       const { token } = useGatewayStore.getState();
+      // Make sure the server-side SSE subscription follows the session we are
+      // about to invoke (server mode shares the Go process across clients).
+      gatewayStartStream(targetSessionId);
       const task = await gatewayInvokeAgent(token, targetSessionId, text, taskMode);
       debug.log("ChatRail", "invoke response:", task);
       addChatMessage({

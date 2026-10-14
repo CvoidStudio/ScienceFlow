@@ -26,11 +26,11 @@
   │ workspaces/    │  每用户/会话独立工作区                          ▼
   │ task_logs/...  │                                    ┌───────────────────────┐
   └────────────────┘                                    │  web_app (Wails v3)   │
-                                                        │  桌面控制台（前端 UI） │
+                                                        │  桌面应用 / 网页服务    │
                                                         └───────────────────────┘
 ```
 
-1. 用户在桌面端发送消息，网关在 `workspaces/<user>/<session>/` 下生成运行清单并拉起安装版 ScienceFlow 智能体；
+1. 用户在桌面端（或 server 模式下的浏览器）发送消息，网关在 `workspaces/<user>/<session>/` 下生成运行清单并拉起安装版 ScienceFlow 智能体；
 2. 智能体运行过程中的 stdout/stderr 与完整交互记录分别写入 `task_logs/<user>/<session>/RAW.log` 与 `<session>/run/.logs/interaction.log`；
 3. 网关监听这两个文件，经 SSE 实时推送给已订阅的桌面端会话；桌面端解析日志重建对话与执行轨迹（Agent Map、消息块、监控面板）。
 
@@ -72,12 +72,16 @@ python -c "import scienceflow, importlib.metadata as m; print(m.version('science
 网关的**启动引导**会自动完成检测、安装与更新（详见下文 `-bootstrap` / `-yes` 参数）：
 
 ```text
-◆ [2/3] 检测 scienceflow 安装
+◆ [2/4] 检测 scienceflow 安装
   ⚠ 未检测到 scienceflow（包名 scienceflow）
+
+  ⚠ 需要安装 scienceflow 才能运行 agent 任务
   Python        /usr/local/bin/python (3.12.13)
   安装命令      python -m pip install --pre scienceflow
   ? 是否自动安装 scienceflow？ [Y/n]
 ```
+
+引导最后还会提示**启动端口**（交互式默认 `8901`）并检测端口占用：若被占用会显示占用进程并询问是否中止（详见 [log_gateway_server/README.md](log_gateway_server/README.md#启动引导scienceflow-环境自检)）。
 
 > 若使用自定义解释器或 `uv`，请设置网关配置中的 `agent.python`（如 `"uv run python"`）。
 
@@ -91,10 +95,10 @@ python -c "import scienceflow, importlib.metadata as m; print(m.version('science
 cd log_gateway_server
 
 # Windows
-go build -o lgw.exe .
+go build -o scienceflow_lgw.exe .
 
 # Linux（可交叉编译）
-GOOS=linux GOARCH=amd64 go build -o lgw .
+GOOS=linux GOARCH=amd64 go build -o scienceflow_lgw .
 ```
 
 产物为**单一可执行文件**，无运行时依赖（registry 检查点除外，见下）。
@@ -119,32 +123,42 @@ GOOS=linux GOARCH=amd64 go build -o lgw .
 }
 ```
 
-用户账号位于 `AUTH.yaml`（与网关鉴权、桌面端登录共用）：
+用户账号位于 `AUTH.yaml`（与网关鉴权、桌面端登录共用；**修改后热更新，无需重启**）：
 
 ```yaml
-admin: admin123            # 简化写法：可读所有源
-sciflow: "123456"
-# 完整写法（按源授权）：
+sciflow: "123456"          # 简化写法：可读所有源
+# 完整写法（按源授权 + 角色）：
 # viewer:
 #   password: viewer456
 #   sources: ["prefixed-logs", "plain-text"]
+
+admin:                     # 超级管理员：登录后可通过 /users 接口增删改账号
+  password: admin123
+  role: admin
 ```
 
+> 超级管理员登录后可用 `/users` 接口在线管理账号（新增 / 改密码 / 改权限 / 删除，即时生效），详见 [log_gateway_server/README.md](log_gateway_server/README.md#控制面接口bearer-token-鉴权)。
 > `inputs` 中的样例日志源仅用于演示 SSE 能力；对接智能体任务时必需的是 `agent` 段与 `agent-logs` 源（网关自动接管）。
 > **部署前请务必修改 `AUTH.yaml` 中的示例口令。**
 
 ### 3. 运行
 
 ```bash
-# 前台运行（交互式启动引导：检测/安装/更新 scienceflow）
-./lgw.exe -config config.json
+# 前台运行（交互式启动引导：检测/安装/更新 scienceflow、选择端口）
+./scienceflow_lgw.exe -config config.json
 
 # 后台 / 服务化部署：跳过交互引导
-./lgw.exe -config config.json -bootstrap=false
+./scienceflow_lgw.exe -config config.json -bootstrap=false
 
-# 无人值守：自动确认安装/更新
-./lgw.exe -config config.json -yes
+# 无人值守：自动确认安装/更新（不会自动中止端口占用进程）
+./scienceflow_lgw.exe -config config.json -yes
 ```
+
+启动引导要点：
+
+- **端口**：交互式运行会提示 `启动端口 [8901]`，回车采用默认 8901；`-bootstrap=false` / `-yes` / 后台运行使用 `config.json` 的 `server.port`。若沿用配置端口，请在提示时手动输入；**端口须与桌面端 `app_config.yaml` 的 `gateway` 地址一致**。
+- **端口占用**：显示占用进程名称、PID 与完整命令，交互式可确认是否中止（默认否）——确认后先 `SIGTERM` 优雅终止（Windows `taskkill`），超时未退出再强制终止，并等待端口真正释放后才继续；拒绝或非交互/`-yes` 模式则打印手动命令并以退出码 1 结束，绝不自动杀进程。
+- **安装/更新**：缺失 scienceflow 时确认后自动 `pip install`，拒绝则打印命令并退出；有更新时确认后 `pip install --upgrade`，拒绝则保留当前版本继续。
 
 健康检查：
 
@@ -159,7 +173,7 @@ curl http://127.0.0.1:52001/healthz
 
 ```text
 gateway/
-├── lgw.exe              # 网关二进制
+├── scienceflow_lgw.exe   # 网关二进制
 ├── config.json          # 网关配置（端口须与桌面端一致）
 ├── AUTH.yaml            # 用户账号
 ├── logs/                # 可选：演示日志源
@@ -168,7 +182,7 @@ gateway/
 ```
 
 - **Windows**：用 [NSSM](https://nssm.cc/) / WinSW 注册为服务（工作目录设为上述目录，参数 `-config config.json -bootstrap=false`），或 `Start-Process` 后台重定向日志；
-- **Linux**：`systemd` 单元或 `nohup ./lgw -config config.json > lgw.out.log 2>&1 &`；
+- **Linux**：`systemd` 单元或 `nohup ./scienceflow_lgw -config config.json > scienceflow_lgw.out.log 2>&1 &`；
 - 重启安全：采集 offset 持久化在 `registry.path`，优雅退出会落盘检查点，重启后无缝续读。
 
 ### 5. 生产部署要点
@@ -239,7 +253,7 @@ scienceflow-gui/
 gateway: http://127.0.0.1:52001   # 必须与网关 config.json 的 server.port 一致
 ```
 
-- 未找到配置文件时使用内置默认 `http://127.0.0.1:8080`，也可在应用内设置中运行时修改；
+- 未找到配置文件时使用内置默认 `http://127.0.0.1:52001`，也可在应用内设置或登录页的「网关」栏运行时修改；
 - `themes/backgrounds/` 目录在首次运行时自动创建，放入 PNG/JPG/WebP 等图片即可在「设置 → 背景图片」中选择；未放置时使用内置默认背景；
 - 登录账号与网关 `AUTH.yaml` 一致（如示例 `admin / admin123`）。
 
@@ -249,6 +263,48 @@ gateway: http://127.0.0.1:52001   # 必须与网关 config.json 的 server.port 
 2. 启动桌面应用，登录后打开「设置 → 测试连接」：仅探测网关连通性，顶栏状态指示同步显示 `已连接`；
 3. 在对话面板发送消息，网关拉起智能体后，Agent Map、执行轨迹与「日志」页签将实时回放运行过程。
 
+### 5. 网页远程服务（server 模式，可选）
+
+同一份源码可构建为**纯 HTTP 服务**（无 GUI / WebView 依赖），部署在服务器上供浏览器远程访问：
+
+```bash
+# 一键：生产构建 + 启动（开发机验证用）
+cd web_app
+wails3 task serve
+
+# 仅构建（产物 bin/scienceflow_gui-server.exe）
+wails3 task build:server
+
+# Linux 交叉编译（在 Windows/macOS 上产出 Linux 服务端）
+GOOS=linux GOARCH=amd64 go build -tags server,production -trimpath -ldflags="-s -w" -o scienceflow_gui-server .
+```
+
+服务器部署布局：
+
+```text
+scienceflow-web/
+├── scienceflow_gui-server        # server 模式二进制
+├── app_config.yaml               # 网关地址 + 网页服务监听地址
+└── themes/backgrounds/           # 可选：背景图
+```
+
+`app_config.yaml` 中新增可选的 `server` 段（缺省 `0.0.0.0:8080`，也可用环境变量 `WAILS_SERVER_HOST` / `WAILS_SERVER_PORT` 覆盖）：
+
+```yaml
+gateway: http://127.0.0.1:52001
+server:
+  host: 0.0.0.0
+  port: 8080
+```
+
+- 启动后浏览器访问 `http://<服务器IP>:8080/`，登录账号仍为网关 `AUTH.yaml` 账号；
+- **网关地址由服务端解析**（`app_config.yaml` 的 `gateway`，查找顺序：二进制同目录 → 工作目录），浏览器不直接访问网关；启动日志会打印生效配置，例如 `ScienceFlow (server): gateway=http://127.0.0.1:52001 server(config)=0.0.0.0:8080`；
+- 浏览器内的所有调用（网关代理、文件、SSE 日志流）均由服务端进程完成，客户端无需安装任何组件；多用户可同时访问（各自独立登录/会话）；
+- 非 Windows 服务器上「监控」面板的本机资源统计显示为 0（不采集），任务与日志链路不受影响；
+- **安全提示**：默认监听所有网卡，请置于内网并配合防火墙/反向代理（HTTPS + 认证）；数据访问控制由网关登录完成；
+- 容器化（可选）：`wails3 task build:docker` / `wails3 task run:docker`（脚手架内置，容器内默认端口 8080）；
+- 若日志出现 `... got HTML response from <地址> ...`：说明该地址返回的是网页而非日志网关（多为 `app_config.yaml` 缺失或指向了别的 Web 服务），请修正 `gateway`，或直接在登录页「网关」栏修改。
+
 ---
 
 ## 四、端到端快速开始（Linux 示例）
@@ -257,10 +313,10 @@ gateway: http://127.0.0.1:52001   # 必须与网关 config.json 的 server.port 
 # 1) 安装智能体
 python -m pip install --pre scienceflow
 
-# 2) 构建并启动网关（首次启动自动校验 scienceflow）
+# 2) 构建并启动网关（-yes：无人值守，自动校验/更新 scienceflow，使用 config.json 端口 52001）
 cd log_gateway_server
-go build -o lgw .
-./lgw -config config.json -yes &
+go build -o scienceflow_lgw .
+./scienceflow_lgw -config config.json -yes &
 curl http://127.0.0.1:52001/healthz
 
 # 3) 构建桌面应用并部署

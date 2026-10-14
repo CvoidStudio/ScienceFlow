@@ -30,6 +30,15 @@ tasks:
       - test -d node_modules || npm install
       - npm run build:dist
 
+  serve:
+    summary: Builds the production web service and starts it (server mode, one-click remote web UI)
+    cmds:
+      - task: common:build:server
+      - cmd: ./{{.BIN_DIR}}/{{.APP_NAME}}-server.exe
+        platforms: [windows]
+      - cmd: ./{{.BIN_DIR}}/{{.APP_NAME}}-server
+        platforms: [linux, darwin]
+
   package:
     summary: Packages a production build of the application
     cmds:

@@ -109,6 +109,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /models/stages", s.handleGetModelStages)
 	mux.HandleFunc("PUT /models/stages", s.handleSetModelStages)
 	mux.HandleFunc("GET /sources", s.handleListSources)
+	mux.HandleFunc("GET /users", s.handleListUsers)
+	mux.HandleFunc("POST /users", s.handleCreateUser)
+	mux.HandleFunc("PUT /users/{name}", s.handleUpdateUser)
+	mux.HandleFunc("DELETE /users/{name}", s.handleDeleteUser)
 	mux.HandleFunc("GET /read_cached_content", s.handleReadCachedContent)
 	mux.HandleFunc("POST /sessions/{id}/invoke", s.handleInvokeAgent)
 	mux.HandleFunc("GET /sessions/{id}/agent", s.handleAgentStatus)
@@ -252,10 +256,15 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tok, exp := s.auth.IssueToken(req.UserName, s.tokenTTL)
+	role := auth.RoleUser
+	if u, ok := s.auth.User(req.UserName); ok && u.IsAdmin() {
+		role = auth.RoleAdmin
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token":      tok,
 		"expires_at": exp.UTC().Format(time.RFC3339),
 		"user":       req.UserName,
+		"role":       role,
 		"sources":    s.allowedSources(req.UserName),
 	})
 }
