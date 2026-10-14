@@ -544,7 +544,7 @@ function ChatTranscript({ busy }: { busy: boolean }) {
       if (msg.message_id.startsWith('history-stop-')) {
         items.push(
           <div key={msg.message_id} className="chat-system-marker">
-            {msg.content}
+            {stopMarkerLocal(msg.content)}
           </div>,
         );
         return;
@@ -770,6 +770,19 @@ function messageTime(created_at: string): string {
   const d = new Date(created_at);
   if (isNaN(d.getTime())) return '';
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// 停止标记原文是 UTC 时间，转成本地时区展示
+function stopMarkerLocal(text: string): string {
+  return text.replace(
+    /(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/,
+    (_m, y, mo, d, h, mi, s) => {
+      const dt = new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +s));
+      if (isNaN(dt.getTime())) return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
+      const p = (n: number) => String(n).padStart(2, '0');
+      return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
+    },
+  );
 }
 
 function UserMessage({ message }: { message: ChatMessage }) {
