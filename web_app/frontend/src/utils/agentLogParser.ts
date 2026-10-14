@@ -508,9 +508,10 @@ export function parseAgentLog(raw: string): ParsedAgentLog {
   // stdout mirror can duplicate the [user] confirmation, which strands an
   // empty header-only run in front of the real one (backfill replays RAW.log
   // before interaction.log); the UI would claim the blank run and render an
-  // activity card that never grows.
+  // activity card that never grows. Header-only runs carrying just a stop
+  // marker count as empty too — the marker transfers onto the real run.
   const isEmptyHeaderRun = (r: ParsedAgentRun) =>
-    !r.steps.length && !r.answer && !r.stopMarker && !r.queryConfirmed && !!r.taskId;
+    !r.steps.length && !r.answer && !r.queryConfirmed && !!r.taskId;
   const folded: ParsedAgentRun[] = [];
   for (const run of runs) {
     if (isEmptyHeaderRun(run)) {
@@ -519,6 +520,7 @@ export function parseAgentLog(raw: string): ParsedAgentLog {
         if (!target.taskId) target.taskId = run.taskId;
         if (!target.mode) target.mode = run.mode;
         if (!target.startedAt) target.startedAt = run.startedAt;
+        if (!target.stopMarker && run.stopMarker) target.stopMarker = run.stopMarker;
         continue;
       }
       folded.push(run);
@@ -532,6 +534,7 @@ export function parseAgentLog(raw: string): ParsedAgentLog {
       if (!run.taskId) run.taskId = empty.taskId;
       if (!run.mode) run.mode = empty.mode;
       if (!run.startedAt) run.startedAt = empty.startedAt;
+      if (!run.stopMarker && empty.stopMarker) run.stopMarker = empty.stopMarker;
       folded.splice(stranded, 1);
     }
     folded.push(run);
