@@ -1,10 +1,10 @@
-//go:build !windows
+//go:build !windows && !linux
 
 package main
 
-// platformSystemStats returns zeroed values on non-Windows platforms
-// (server-mode deployments on Linux/macOS). The web UI treats zeros as
-// "unavailable" and simply hides the local machine gauges.
+// platformSystemStats returns zeroed values on platforms without a native
+// collector (macOS server-mode deployments). Windows and Linux report real
+// counters via sysstats_windows.go / sysstats_linux.go.
 func platformSystemStats() (SystemStats, error) {
 	return SystemStats{}, nil
 }

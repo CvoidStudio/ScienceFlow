@@ -283,7 +283,8 @@ gateway/
 1. `registry.path` 指向持久化目录（容器场景挂载 volume）；
 2. `inputs[].path` 使用绝对路径；
 3. 对外暴露时经反向代理（Nginx/Caddy）加 TLS 与鉴权；SSE 已内置 `X-Accel-Buffering: no`；
-4. 网关为单实例有状态（检查点），多实例共读同一批日志会导致重复推送。
+4. 网关为单实例有状态（检查点），多实例共读同一批日志会导致重复推送；
+5. **重启恢复**：网关重启后会扫描任务工作区，自动恢复历史会话（会话 ID、名称、历史日志与续聊 memory 均保留）；仅创建过会话但从未执行任务的空会话不会恢复。请持久化 `workspaces/` 与 `task_logs/` 目录。
 
 > 完整配置字段、SSE 协议、控制面 API（`/login`、`/sessions/*`、`/models/*`、`/invoke` 等）见 **[log_gateway_server/README.md](log_gateway_server/README.md)**。
 
@@ -368,15 +369,21 @@ wails3 task serve
 # 仅构建（产物 bin/scienceflow_gui-server.exe）
 wails3 task build:server
 
-# Linux 交叉编译（在 Windows/macOS 上产出 Linux 服务端）
-GOOS=linux GOARCH=amd64 go build -tags server,production -trimpath -ldflags="-s -w" -o scienceflow_gui-server .
+# Linux 交叉编译（推荐：先自动构建前端 + bindings，再产出 linux/amd64 二进制）
+# 产物 bin/scienceflow_gui-server-linux-amd64；如需 arm64 追加 LINUX_ARCH=arm64
+wails3 task build:server:linux
+
+# 手动等价流程（两步都必须执行——前端 dist 是 go:embed 打进去的，
+# 直接 go build 会嵌入过期的 frontend/dist）
+cd frontend && npm run build:dist && cd ..
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags server,production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/scienceflow_gui-server-linux-amd64 .
 ```
 
 服务器部署布局：
 
 ```text
 scienceflow-web/
-├── scienceflow_gui-server        # server 模式二进制
+├── scienceflow_gui-server-linux-amd64   # server 模式二进制
 ├── app_config.yaml               # 网关地址 + 网页服务监听地址
 └── themes/backgrounds/           # 可选：背景图
 ```
@@ -393,7 +400,7 @@ server:
 - 启动后浏览器访问 `http://<服务器IP>:8080/`，登录账号仍为网关 `AUTH.yaml` 账号；
 - **网关地址由服务端解析**（`app_config.yaml` 的 `gateway`，查找顺序：二进制同目录 → 工作目录），浏览器不直接访问网关；启动日志会打印生效配置，例如 `ScienceFlow (server): gateway=http://127.0.0.1:52001 server(config)=0.0.0.0:8080`；
 - 浏览器内的所有调用（网关代理、文件、SSE 日志流）均由服务端进程完成，客户端无需安装任何组件；多用户可同时访问（各自独立登录/会话）；
-- 非 Windows 服务器上「监控」面板的本机资源统计显示为 0（不采集），任务与日志链路不受影响；
+- 本机资源统计：Windows 用系统计数器、Linux 用 `/proc/stat`、`/proc/meminfo` 与根分区 `statfs` 采集（CPU/内存/磁盘实时展示）；其他平台显示为 0（不采集），任务与日志链路不受影响；
 - **安全提示**：默认监听所有网卡，请置于内网并配合防火墙/反向代理（HTTPS + 认证）；数据访问控制由网关登录完成；
 - 容器化（可选）：`wails3 task build:docker` / `wails3 task run:docker`（脚手架内置，容器内默认端口 8080）；
 - 若日志出现 `... got HTML response from <地址> ...`：说明该地址返回的是网页而非日志网关（多为 `app_config.yaml` 缺失或指向了别的 Web 服务），请修正 `gateway`，或直接在登录页「网关」栏修改。
