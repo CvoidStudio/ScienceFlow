@@ -147,6 +147,15 @@ func main() {
 		fileWatcher,
 		cfg.Workspace,
 	)
+
+	// Restart continuity: re-register sessions found in the task workspace
+	// root so the frontend's session list (and stored session id) survives a
+	// gateway restart; the agent workspace/memory is reused on the next
+	// invoke. In-memory-only sessions without task content are not restored.
+	if n := srv.RestoreSessions(); n > 0 {
+		logger.Printf("restored %d historical session(s) from task workspaces", n)
+	}
+
 	httpSrv := &http.Server{Addr: srv.Addr(), Handler: srv.Handler()}
 
 	go func() {

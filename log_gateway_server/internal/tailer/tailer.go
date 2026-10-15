@@ -725,8 +725,11 @@ func sessionFromAgentLogPath(path string) string {
 }
 
 var (
-	ansiEscapeRe   = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
-	loguruPrefixRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \| [A-Z]+\s*\| `)
+	ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+	// Strips `timestamp | LEVEL | ` plus an optional loguru logger-name
+	// segment (`scienceflow | `) used by the heavy worker transcripts, so SSE
+	// consumers always receive the bare payload line.
+	loguruPrefixRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \| [A-Z]+\s*\| (?:\S+ \| )?`)
 )
 
 // cleanInteractionLine normalizes one interaction.log line for SSE consumers:

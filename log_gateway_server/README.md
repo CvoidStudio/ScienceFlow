@@ -294,6 +294,17 @@ curl -N "http://127.0.0.1:8080/events?session=$sid"
 
 演示页 `http://127.0.0.1:8080/` 内置登录→建会话→推流的 JS 逻辑。
 
+### 重启后的会话恢复
+
+会话本身保存在内存中，但网关**启动时会扫描任务工作区** `$SCIFLOW_WORKSPACE_ROOT/<user>/<session>/`（`agent.enabled=true` 时），把仍留有任务产物的历史会话重新注册到会话列表。判定内容为以下任一文件存在：`gateway_first_user.txt`、`gateway_manifest*.yaml`、`task_logs/<user>/<session>/RAW.log`、`run/.logs/interaction.log`（纯空目录不恢复）：
+
+- **会话 ID 保留**：前端本地保存的 `session_id` 在网关重启后依旧可用（`activate` / SSE 订阅 / invoke 均照常），无需重新建会话；
+- **名称与时间**：会话名取自首问文件或 manifest 的 `task`（首行、折叠空白、截断 120 字符），列表 `last_active` 取自磁盘文件最新修改时间，排序与重启前一致；
+- **历史回放**：SSE 连接后自动 backfill 历史 RAW.log / interaction.log 内容，前端据此重建对话；
+- **续聊**：再次 invoke 复用同一工作区，ScienceFlow memory 自动加载，实现跨重启多轮对话；
+- **TTL**：恢复的会话不受空闲 TTL 清理（内容在磁盘）；`DELETE /sessions/{id}` 仅从内存列表移除（软删除），目录仍在时下次重启会再次出现；
+- 提示：`workspace_root` 变化或目录被清理后无法恢复；启动日志会打印 `restored N historical session(s) from task workspaces`。
+
 ### SSE 消息格式
 
 `event: log`，`data` 为 JSON。普通/前缀模式：

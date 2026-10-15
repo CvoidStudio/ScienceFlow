@@ -144,6 +144,10 @@ const ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]/g;
 const LOGURU_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \| [A-Z]+\s*\| (?:[\w.-]+ \| )?/;
 // Channel tag like `[draft|?]` emitted by the CLI transcript writer.
 const CHANNEL_TAG_RE = /^\[[A-Za-z_][\w-]*\|[^\]]*\]\s*/;
+// LIVE gateway lines are stripped of `timestamp | LEVEL | ` only, so the
+// heavy worker transcript keeps its loguru logger segment (`scienceflow | ...`).
+// Strip it when a real marker follows, so tag dispatch sees the bare line.
+const LIVE_LOGGER_SEGMENT_RE = /^[A-Za-z_][\w.-]{0,31} \| (?=\[|={3,})/;
 
 // `=== [RFC3339] task=task-123 mode=lite query="hi there" ===`
 const RAW_HEADER_RE =
@@ -300,6 +304,7 @@ function normalizeLine(line: string): { text: string; time: string } {
     text = text.slice(m[0].length);
   }
   text = text.replace(CHANNEL_TAG_RE, '');
+  text = text.replace(LIVE_LOGGER_SEGMENT_RE, '');
   return { text, time };
 }
 

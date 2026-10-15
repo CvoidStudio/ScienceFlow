@@ -9,6 +9,11 @@ func TestCleanInteractionLine(t *testing.T) {
 			want: "[draft|?] [user] hello",
 		},
 		{
+			// heavy worker transcripts add a loguru logger-name segment.
+			in:   "2026-10-15 03:14:47 | INFO     | scienceflow | \x1b[96m[user] You are solving one ML task.\x1b[0m",
+			want: "[user] You are solving one ML task.",
+		},
+		{
 			in:   "2026-09-23 08:34:12 | INFO     | [draft|?] \x1b[32m[tool-call] ls {\"path\": \".\"}\x1b[0m",
 			want: "[draft|?] [tool-call] ls {\"path\": \".\"}",
 		},
