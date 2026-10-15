@@ -15,6 +15,9 @@ export interface Translations {
     switchToEnglish: string;
     logout: string;
   };
+  // Labels for the heavy runner's Result summary card (keys are parsed
+  // verbatim from the log; unknown keys fall back to the raw key text).
+  runSummary: Record<string, string>;
   login: {
     tagline1: string;
     tagline2: string;
@@ -396,6 +399,25 @@ export const zhCN: Translations = {
     switchToEnglish: '切换到英文',
     logout: '退出登录',
   },
+  runSummary: {
+    status: '状态',
+    stop_reason: '停止原因',
+    failure_kind: '失败类型',
+    outcome: '结果',
+    worker_run_succeeded: 'Worker 成功',
+    num_workers: 'Worker 数',
+    stage_count: '阶段数',
+    global_candidate_count: '候选方案',
+    merge_status: '合并状态',
+    final_artifact_count: '最终产物',
+    estra_decisions: 'ESTRA 决策',
+    estra_switch_count: 'ESTRA 切换',
+    main_llm_calls: '主 LLM 调用',
+    main_tokens_input: '主输入 Tokens',
+    main_tokens_output: '主输出 Tokens',
+    stage_llm_calls: '阶段 LLM 调用',
+    stage_tokens_input: '阶段输入 Tokens',
+  },
   login: {
     tagline1: '让长程研究',
     tagline2: '可恢复 · 可适应 · 高效',
@@ -776,6 +798,25 @@ export const enUS: Translations = {
     switchToChinese: 'Switch to Chinese',
     switchToEnglish: 'Switch to English',
     logout: 'Sign out',
+  },
+  runSummary: {
+    status: 'Status',
+    stop_reason: 'Stop reason',
+    failure_kind: 'Failure kind',
+    outcome: 'Outcome',
+    worker_run_succeeded: 'Worker ok',
+    num_workers: 'Workers',
+    stage_count: 'Stages',
+    global_candidate_count: 'Candidates',
+    merge_status: 'Merge',
+    final_artifact_count: 'Final artifacts',
+    estra_decisions: 'ESTRA decisions',
+    estra_switch_count: 'ESTRA switches',
+    main_llm_calls: 'Main LLM calls',
+    main_tokens_input: 'Main tokens in',
+    main_tokens_output: 'Main tokens out',
+    stage_llm_calls: 'Stage LLM calls',
+    stage_tokens_input: 'Stage tokens in',
   },
   login: {
     tagline1: 'Making Long-Horizon Research',

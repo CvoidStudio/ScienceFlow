@@ -660,6 +660,19 @@ function RunStep({ step, live }: { step: ParsedAgentStep; live: boolean }) {
     );
   }
 
+  if (step.kind === 'summary') {
+    return (
+      <div className="run-summary" data-run-summary>
+        {step.items.map((item) => (
+          <div className="run-summary-item" key={item.label}>
+            <span className="run-summary-label">{t.runSummary[item.label] || item.label}</span>
+            <span className="run-summary-value">{item.value}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   if (step.kind === 'notice') {
     return (
       <div className="run-step is-notice">

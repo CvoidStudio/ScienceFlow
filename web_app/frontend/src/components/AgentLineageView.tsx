@@ -37,12 +37,17 @@ export function AgentLineageView() {
   const grouped = useMemo(() => groupByTool(toolCalls), [toolCalls]);
 
   if (toolCalls.length === 0) {
+    const heavy = lastRun?.mode === 'heavy';
     return (
       <div className="dim" style={{ display: 'grid', placeItems: 'center', height: '100%', textAlign: 'center' }}>
         <div>
           <p style={{ margin: 0, fontSize: 14 }}>Agent Lineage</p>
           <p style={{ margin: '8px 0 0', fontSize: 12 }}>
-            {status === 'idle' ? '连接日志网关后，智能体的 step 演进将在此呈现。' : '等待工具调用…'}
+            {status === 'idle'
+              ? '连接日志网关后，智能体的 step 演进将在此呈现。'
+              : heavy
+                ? 'HEAVY 模式下 worker 的工具调用记录在工作区子日志中；本卡的迭代进度与阶段结果见驾驶舱「运行」卡片。'
+                : '等待工具调用…'}
           </p>
         </div>
       </div>

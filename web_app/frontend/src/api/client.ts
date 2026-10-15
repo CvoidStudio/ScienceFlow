@@ -221,24 +221,41 @@ export async function fetchReportContent(reportPath: string, taskRoot?: string, 
 
 // ── Auth (gateway_server /login) ──
 
-export async function validateAuth(): Promise<boolean> {
+export type AuthValidation = 'valid' | 'invalid' | 'unreachable';
+
+// validateAuth re-checks the cached token against the gateway. Distinguishes
+// a rejected token ('invalid' → the session must be dropped) from a gateway
+// that is merely unreachable ('unreachable' → keep the 7-day cache entry; a
+// transient outage or a wrong address must not burn the session).
+export async function validateAuth(): Promise<AuthValidation> {
   const token = _getAuthToken();
-  if (!token) return false;
+  if (!token) return 'invalid';
+  let res;
   try {
-    const res = await Proxy({
+    res = await Proxy({
       method: 'GET',
       path: '/sources',
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (res.status < 200 || res.status >= 300) return false;
-    // A valid gateway answers with a JSON array. HTML bodies (SPA fallback or
-    // a reverse proxy page) mean the address is not the log gateway, so a
-    // cached token must not be treated as authenticated.
-    const data = JSON.parse(res.body || '[]');
-    return Array.isArray(data);
   } catch {
-    return false;
+    return 'unreachable';
   }
+  if (res.status === 401 || res.status === 403) return 'invalid';
+  if (res.status >= 500) return 'unreachable';
+  if (res.status < 200 || res.status >= 300) return 'invalid';
+  // A valid gateway answers with {"sources": [...]} (older builds: a bare
+  // array). HTML bodies (SPA fallback, reverse proxy page) mean the address
+  // is not the log gateway.
+  try {
+    const data = JSON.parse(res.body || '{}');
+    if (Array.isArray(data)) return 'valid';
+    if (data && typeof data === 'object' && Array.isArray((data as { sources?: unknown }).sources)) {
+      return 'valid';
+    }
+  } catch {
+    /* not JSON */
+  }
+  return 'invalid';
 }
 
 // InvalidCredentialsError marks a login rejection (HTTP 401/403). The UI maps
