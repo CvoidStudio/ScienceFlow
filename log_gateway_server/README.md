@@ -300,7 +300,7 @@ curl -N "http://127.0.0.1:8080/events?session=$sid"
 
 - **会话 ID 保留**：前端本地保存的 `session_id` 在网关重启后依旧可用（`activate` / SSE 订阅 / invoke 均照常），无需重新建会话；
 - **名称与时间**：会话名取自首问文件或 manifest 的 `task`（首行、折叠空白、截断 120 字符），列表 `last_active` 取自磁盘文件最新修改时间，排序与重启前一致；
-- **历史回放**：SSE 连接后自动 backfill 历史 RAW.log / interaction.log 内容，前端据此重建对话；
+- **历史回放**：SSE 连接后自动 backfill 历史 RAW.log / interaction.log / task_logs/parallel_subprocess.log（heavy）内容，前端据此重建对话；
 - **续聊**：再次 invoke 复用同一工作区，ScienceFlow memory 自动加载，实现跨重启多轮对话；
 - **TTL**：恢复的会话不受空闲 TTL 清理（内容在磁盘）；`DELETE /sessions/{id}` 仅从内存列表移除（软删除），目录仍在时下次重启会再次出现；
 - 提示：`workspace_root` 变化或目录被清理后无法恢复；启动日志会打印 `restored N historical session(s) from task workspaces`。
@@ -402,12 +402,13 @@ $SCIFLOW_WORKSPACE_ROOT/task_logs/<user>/<session>/RAW.log
 
 该文件被 gateway 的 tailer 自动监听（源名 `agent-logs`），新增的每一行通过 SSE `event: log` 推送至已订阅该源的会话。前端无需轮询，打开 SSE 连接即可实时看到 agent 的逐行输出。
 
-**双 transcript**：安装版 CLI（0.2.0b5+）在 `--plain` 模式下 stdout 几乎为空（仅 banner 与一行提示），完整交互（user/assistant/tool 轮次）写入 `<session>/run/.logs/interaction.log`。因此任务启动时 gateway 同时 tail 两个文件，均经 SSE `event: log` 推送，以 `file` 字段区分：
+**transcript 说明**：安装版 CLI（0.2.0b5+）在 `--plain` 模式下 stdout 几乎为空（仅 banner 与一行提示），完整交互（user/assistant/tool 轮次）写入 `<session>/run/.logs/interaction.log`；heavy（LNR）任务的完整研究过程由 `cli parallel` 的 worker 写入 `<session>/run/task_logs/parallel_subprocess.log`（RAW.log 此时只含 parallel 启动横幅与最终汇总）。任务启动时 gateway 同时 tail 这三个文件（存在哪个推哪个），均经 SSE `event: log` 推送，以 `file` 字段区分：
 
-- `RAW.log`：stdout/stderr 镜像（banner、API 报错、traceback、任务 header）
-- `interaction.log`：完整交互记录；推送前会剥离 ANSI 色彩码与 loguru 时间戳前缀，保留 `[user] ...`、`[tool-call] ...`、`[assistant] ...`、工具输出等有效载荷
+- `RAW.log`：stdout/stderr 镜像（banner、API 报错、traceback、任务 header、heavy 的启动/汇总）
+- `interaction.log`：lite 任务的完整交互记录；推送前会剥离 ANSI 色彩码与 loguru 时间戳前缀，保留 `[user] ...`、`[tool-call] ...`、`[assistant] ...`、工具输出等有效载荷
+- `parallel_subprocess.log`：heavy 任务的 LNR worker 全程输出（Agent Iteration、工具与阶段进度、最终 `Result: {...}` 统计）
 
-SSE 事件与 backfill 均携带 `session` 字段做跨会话隔离。注意：前端旧版聊天解析器（`agentLogParser.ts`）面向源码仓时代的 RAW.log 格式（`=== Task: ===`/`→ tool`/`## Summary`），对接安装版交互格式需相应适配。
+SSE 事件与 backfill 均携带 `session` 字段做跨会话隔离；三个文件在 SSE 重连/会话切换/网关重启后都会自动回放（backfill）。注意：前端旧版聊天解析器（`agentLogParser.ts`）面向源码仓时代的 RAW.log 格式（`=== Task: ===`/`→ tool`/`## Summary`），对接安装版交互格式需相应适配。
 
 SSE 消息示例（`file` 字段为 `RAW.log`）：
 

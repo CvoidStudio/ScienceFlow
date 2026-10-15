@@ -108,15 +108,21 @@ func (t *Task) InteractionLogPath() string {
 // runner writes under <task workspace>/task_logs/ for LNR (heavy) tasks.
 const HeavySubprocessLogName = "parallel_subprocess.log"
 
+// SessionHeavyLogPath returns the heavy (LNR) worker transcript of a session
+// workspace directory: <sessionDir>/run/task_logs/parallel_subprocess.log.
+func SessionHeavyLogPath(sessionDir string) string {
+	return filepath.Join(sessionDir, RunDirName, "task_logs", HeavySubprocessLogName)
+}
+
 // HeavyLogPath returns the LNR worker transcript path for heavy tasks
-// (<workspace>/task_logs/parallel_subprocess.log), or "" for lite tasks.
+// (<workspace>/run/task_logs/parallel_subprocess.log), or "" for lite tasks.
 // The file appears shortly after launch (when the parallel scheduler spawns
 // the worker); the tailer attaches to it as soon as it exists.
 func (t *Task) HeavyLogPath() string {
 	if t.Mode != ModeHeavy {
 		return ""
 	}
-	return filepath.Join(t.Workspace, "task_logs", HeavySubprocessLogName)
+	return SessionHeavyLogPath(filepath.Dir(t.Workspace))
 }
 
 func (t *Task) Status() TaskStatus {

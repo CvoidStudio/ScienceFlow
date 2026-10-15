@@ -764,8 +764,8 @@ func (s *Server) sessionRawLogPath(sessionID string) (string, bool) {
 
 // backfillFiles resolves the files whose cached content should be streamed for
 // a given source, scoped to the session. Agent transcripts are per-session
-// (RAW.log + the installed CLI's interaction.log); static sources map to their
-// current glob matches.
+// (RAW.log, the installed CLI's interaction.log, and the heavy LNR worker's
+// parallel_subprocess.log); static sources map to their current glob matches.
 func (s *Server) backfillFiles(sessionID, source string) []string {
 	if source == agent.RawLogSource {
 		var out []string
@@ -774,6 +774,15 @@ func (s *Server) backfillFiles(sessionID, source string) []string {
 		}
 		if dir, ok := s.sessionWorkspaceDir(sessionID); ok {
 			if p := agent.SessionInteractionLogPath(dir); p != "" {
+				if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+					out = append(out, p)
+				}
+			}
+			// Heavy mode: the LNR worker transcript is the primary history
+			// source (RAW.log only carries the parallel launcher's banner and
+			// summary). Stream its cached content on reconnect/restart
+			// exactly like the live watcher does.
+			if p := agent.SessionHeavyLogPath(dir); p != "" {
 				if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
 					out = append(out, p)
 				}
