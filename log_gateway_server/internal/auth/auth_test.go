@@ -39,6 +39,28 @@ func TestLoadAndVerify(t *testing.T) {
 	}
 }
 
+func TestNumericScalarPasswords(t *testing.T) {
+	// Hand-edited YAML often leaves numeric passwords unquoted; yaml.v3
+	// decodes them as int/bool and they must still load.
+	path := writeAuthFile(t, "ictmind:\n  password: 123456\n  role: admin\nplain: 654321\nflag: true\n")
+	s, err := Load(path, nil)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !s.Verify("ictmind", "123456") {
+		t.Error("unquoted numeric mapping password should verify as string")
+	}
+	if !s.Verify("plain", "654321") {
+		t.Error("unquoted numeric scalar password should verify as string")
+	}
+	if !s.Verify("flag", "true") {
+		t.Error("unquoted boolean password should verify as string")
+	}
+	if !s.IsAdmin("ictmind") {
+		t.Error("ictmind should be admin")
+	}
+}
+
 func TestRoleParsing(t *testing.T) {
 	path := writeAuthFile(t, "boss:\n  password: x\n  role: admin\nplain: p\nboo:\n  password: q\n  role: user\n")
 	s, err := Load(path, nil)

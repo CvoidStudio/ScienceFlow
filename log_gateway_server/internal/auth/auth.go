@@ -168,14 +168,33 @@ func parseUsers(b []byte, path string) (map[string]*User, error) {
 	return users, nil
 }
 
+// yamlScalarString coerces a YAML scalar to its string form. Hand-edited
+// files frequently contain unquoted numeric/boolean passwords
+// (`password: 123456`), which yaml.v3 decodes as int/bool — without this
+// coercion the whole AUTH.yaml would fail to load.
+func yamlScalarString(v interface{}) (string, bool) {
+	switch t := v.(type) {
+	case string:
+		return t, true
+	case int:
+		return strconv.Itoa(t), true
+	case int64:
+		return strconv.FormatInt(t, 10), true
+	case float64:
+		return strconv.FormatFloat(t, 'f', -1, 64), true
+	case bool:
+		return strconv.FormatBool(t), true
+	default:
+		return "", false
+	}
+}
+
 func parseUser(v interface{}) (*User, error) {
 	u := &User{}
 	switch t := v.(type) {
-	case string:
-		u.Password = t
 	case map[string]interface{}:
 		if p, ok := t["password"]; ok {
-			ps, ok := p.(string)
+			ps, ok := yamlScalarString(p)
 			if !ok {
 				return nil, fmt.Errorf("password must be a string")
 			}
@@ -205,7 +224,11 @@ func parseUser(v interface{}) (*User, error) {
 			u.Role = role
 		}
 	default:
-		return nil, fmt.Errorf("value must be a password string or a mapping")
+		ps, ok := yamlScalarString(v)
+		if !ok {
+			return nil, fmt.Errorf("value must be a password string or a mapping")
+		}
+		u.Password = ps
 	}
 	if u.Password == "" {
 		return nil, fmt.Errorf("missing password")

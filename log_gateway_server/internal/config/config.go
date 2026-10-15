@@ -73,7 +73,7 @@ type AgentConfig struct {
 	InputDataDir     string   `json:"input_data_dir"`     // optional -d shared dataset root
 	ExpID            string   `json:"exp_id"`             // optional --exp-id
 	Timeout          Duration `json:"timeout"`            // per-invocation wall-clock cap; 0 = unbounded
-	HeavyTimeout     Duration `json:"heavy_timeout"`      // wall-clock cap for heavy (run --type lnr) tasks; 0 = use timeout
+	HeavyTimeout     Duration `json:"heavy_timeout"`      // wall-clock cap for heavy (parallel LNR) tasks; 0 = use timeout
 	MaxConcurrent    int      `json:"max_concurrent"`     // max simultaneous running agent processes (0 = unlimited)
 	MaxQueue         int      `json:"max_queue"`          // max tasks waiting in queue when all slots full; 0 = unlimited
 	FileSyncInterval Duration `json:"file_sync_interval"` // workspace file-tree change polling interval
