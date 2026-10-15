@@ -53,6 +53,17 @@ const RawLogSource = "agent-logs"
 // manifest resolves to (workspace_base/run_id/exp_id with exp_id="run").
 const RunDirName = "run"
 
+// Per-session file names written by the gateway. Exported so the restart
+// session-restore logic can locate them.
+const (
+	// FirstUserQueryFile holds the lite task's original query (session-name
+	// source after restarts).
+	FirstUserQueryFile = "gateway_first_user.txt"
+	// LiteManifestName / HeavyManifestName are the per-invocation manifests.
+	LiteManifestName  = "gateway_manifest.yaml"
+	HeavyManifestName = "gateway_manifest_heavy.yaml"
+)
+
 // SessionInteractionLogPath returns the interaction transcript the installed
 // scienceflow CLI writes for a session workspace directory
 // (<sessionDir>/run/.logs/interaction.log). In --plain mode the REPL mirrors
@@ -746,11 +757,11 @@ func (r *Runner) writeManifest(ws, user, session, query string) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("resolve workspace path: %w", err)
 	}
-	queryFile := filepath.Join(absWS, "gateway_first_user.txt")
+	queryFile := filepath.Join(absWS, FirstUserQueryFile)
 	if err := os.WriteFile(queryFile, []byte(query), 0o644); err != nil {
 		return "", fmt.Errorf("write first-user query: %w", err)
 	}
-	manifest := filepath.Join(absWS, "gateway_manifest.yaml")
+	manifest := filepath.Join(absWS, LiteManifestName)
 
 	var b strings.Builder
 	b.WriteString("defaults:\n")
@@ -782,7 +793,7 @@ func (r *Runner) writeHeavyManifest(ws, user, session, query string) (string, er
 	if err != nil {
 		return "", fmt.Errorf("resolve workspace path: %w", err)
 	}
-	manifest := filepath.Join(absWS, "gateway_manifest_heavy.yaml")
+	manifest := filepath.Join(absWS, HeavyManifestName)
 
 	var b strings.Builder
 	b.WriteString("defaults:\n")
