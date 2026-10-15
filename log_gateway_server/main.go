@@ -92,17 +92,26 @@ func main() {
 		// Dynamic per-session log tracking: instead of a static glob that
 		// tails every session's files, we register the "agent-logs" source
 		// name up front (so ACL/subscription filtering works from login) and
-		// attach/detach individual files as tasks start/finish. Two
-		// transcripts are streamed per task: RAW.log (stdout/stderr: banners,
-		// errors, tracebacks) and run/.logs/interaction.log (the installed
-		// CLI's full interaction record — user/assistant/tool turns — which
-		// does NOT reach stdout in --plain mode).
+		// attach/detach individual files as tasks start/finish. Streamed
+		// transcripts per task: RAW.log (subprocess stdout/stderr — banners,
+		// errors, launch/summary lines), run/.logs/interaction.log (the
+		// installed CLI's full interaction record — user/assistant/tool turns
+		// — which does NOT reach stdout in --plain mode) and, for heavy
+		// (LNR) tasks, run/task_logs/parallel_subprocess.log (the research
+		// worker's own transcript, written by `cli parallel`).
 		t.RegisterSourceName(agent.RawLogSource)
 		agentRunner.OnTaskStart = func(task *agent.Task) {
 			if task.RawLogPath != "" {
 				t.WatchFile(task.RawLogPath, agent.RawLogSource, 100*time.Millisecond)
 			}
 			if p := task.InteractionLogPath(); p != "" {
+				t.WatchFile(p, agent.RawLogSource, 100*time.Millisecond)
+			}
+			// Heavy: the worker log appears once the parallel scheduler
+			// spawns the LNR subprocess; the tailer attaches on its next
+			// scan (registration baseline is offset 0, so no early bytes are
+			// skipped).
+			if p := task.HeavyLogPath(); p != "" {
 				t.WatchFile(p, agent.RawLogSource, 100*time.Millisecond)
 			}
 		}
@@ -113,6 +122,9 @@ func main() {
 				t.UnwatchFileAfter(task.RawLogPath, 10*time.Second)
 			}
 			if p := task.InteractionLogPath(); p != "" {
+				t.UnwatchFileAfter(p, 10*time.Second)
+			}
+			if p := task.HeavyLogPath(); p != "" {
 				t.UnwatchFileAfter(p, 10*time.Second)
 			}
 		}
